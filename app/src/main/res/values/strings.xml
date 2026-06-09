@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LIVI</string>
+    <string name="accessibility_service_label">LIVI Mantenimiento</string>
+    <string name="accessibility_service_description">Automatiza el borrado de caché y datos de aplicaciones programadas por LIVI. Solo se activa cuando una tarea programada lo requiere.</string>
+
+    <string name="title_tasks">Tareas programadas</string>
+    <string name="action_add">Agregar tarea</string>
+    <string name="action_run_now">Probar ahora</string>
+    <string name="action_delete">Eliminar</string>
+
+    <string name="task_clear_cache">Borrar caché</string>
+    <string name="task_clear_data">Borrar datos</string>
+    <string name="task_airplane_toggle">Modo avión 10s</string>
+
+    <string name="permissions_title">Permisos requeridos</string>
+    <string name="permission_accessibility">Servicio de Accesibilidad</string>
+    <string name="permission_notifications">Notificaciones</string>
+    <string name="permission_exact_alarm">Alarmas exactas</string>
+    <string name="permission_write_secure">Modo avión (ADB)</string>
+
+    <string name="grant">Otorgar</string>
+    <string name="granted">Otorgado</string>
+
+    <string name="notification_channel_id">livi_worker</string>
+    <string name="notification_channel_name">Mantenimiento LIVI</string>
+    <string name="notification_running">Ejecutando tarea de mantenimiento…</string>
+</resources>

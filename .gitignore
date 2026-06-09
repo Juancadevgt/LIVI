@@ -1,0 +1,22 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+*.keystore
+*.jks
+!debug.keystore
+
+# VS Code / Claude Code
+.vscode/
+.claude/
+dist/
+
+# Java compilation test artifacts
+*.class
+NetTest*.java
