@@ -7,7 +7,6 @@ import android.provider.Settings
 import android.util.Log
 import com.livi.maintenance.accessibility.LiviAccessibilityService
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
 
 class ActionExecutor(private val context: Context) {
 
@@ -21,7 +20,7 @@ class ActionExecutor(private val context: Context) {
                 requireNotNull(targetPackage) { "CLEAR_DATA requiere targetPackage" },
                 LiviAccessibilityService.Mode.CLEAR_DATA
             )
-            ActionType.AIRPLANE_TOGGLE -> toggleAirplane()
+            ActionType.AIRPLANE_TOGGLE -> toggleAirplaneViaQuickSettings()
         }
     }
 
@@ -41,38 +40,41 @@ class ActionExecutor(private val context: Context) {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
-        // Damos un margen al AccessibilityService para que navegue y haga taps
         delay(7000)
         LiviAccessibilityService.reset()
         return Result.Success
     }
 
-    private suspend fun toggleAirplane(): Result {
-        // Requiere que el usuario haya otorgado WRITE_SECURE_SETTINGS vía ADB:
-        // adb shell pm grant com.livi.maintenance android.permission.WRITE_SECURE_SETTINGS
+    /**
+     * En Android 14+ sin Device Owner ni root, escribir Settings.Global.AIRPLANE_MODE_ON
+     * cambia el icono pero NO apaga las radios — el sistema ignora el cambio. La única
+     * forma confiable es abrir el panel de Quick Settings y simular el tap del usuario
+     * sobre el tile "Modo avión", que el sistema acepta como acción humana.
+     */
+    private suspend fun toggleAirplaneViaQuickSettings(): Result {
+        val svc = LiviAccessibilityService.service()
+            ?: return Result.Failure("Servicio de Accesibilidad no activado")
         return try {
-            val resolver = context.contentResolver
-            val ok1 = Settings.Global.putInt(resolver, Settings.Global.AIRPLANE_MODE_ON, 1)
-            broadcastAirplaneChange(true)
-            withTimeoutOrNull(15000) { delay(10000) }
-            val ok2 = Settings.Global.putInt(resolver, Settings.Global.AIRPLANE_MODE_ON, 0)
-            broadcastAirplaneChange(false)
-            if (ok1 && ok2) Result.Success
-            else Result.Failure("No se pudo modificar AIRPLANE_MODE_ON (¿falta WRITE_SECURE_SETTINGS?)")
-        } catch (t: Throwable) {
-            Log.e(TAG, "Error al alternar modo avión", t)
-            Result.Failure(t.message ?: "Error desconocido")
-        }
-    }
+            // Tap 1: activar
+            LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_ON)
+            svc.openQuickSettings()
+            delay(3500)
+            LiviAccessibilityService.reset()
 
-    private fun broadcastAirplaneChange(state: Boolean) {
-        val intent = Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).apply {
-            putExtra("state", state)
-        }
-        try {
-            context.sendBroadcast(intent)
-        } catch (_: SecurityException) {
-            // En algunas versiones está restringido — el cambio de Settings.Global ya basta
+            // Espera 10s con el modo avión activo
+            delay(10_000)
+
+            // Tap 2: desactivar
+            LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_OFF)
+            svc.openQuickSettings()
+            delay(3500)
+            LiviAccessibilityService.reset()
+
+            Result.Success
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error en toggle modo avión", t)
+            LiviAccessibilityService.reset()
+            Result.Failure(t.message ?: "Error desconocido")
         }
     }
 

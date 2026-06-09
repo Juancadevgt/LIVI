@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  packageNames se omite intencionalmente para que el service vea eventos
+  de Settings (clear cache/data) Y de SystemUI (Quick Settings tile de modo avion).
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
@@ -7,5 +11,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="100"
-    android:packageNames="com.android.settings"
     android:settingsActivity="com.livi.maintenance.MainActivity" />
