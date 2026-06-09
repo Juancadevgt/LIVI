@@ -55,28 +55,48 @@ class ActionExecutor(private val context: Context) {
         val svc = LiviAccessibilityService.service()
             ?: return Result.Failure("Servicio de Accesibilidad no activado")
         return try {
-            // Tap 1: activar
+            val initial = airplaneModeOn()
+            Log.i(TAG, "===== toggleAirplane INICIO airplane_mode_on=$initial =====")
+
+            // Tap 1: cambiar al opuesto del estado inicial
+            Log.i(TAG, "Tap 1: abriendo Quick Settings...")
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_ON)
             svc.openQuickSettings()
-            delay(3500)
+            delay(4500)
             LiviAccessibilityService.reset()
+            // Cerrar el panel explícitamente por si quedó abierto
+            svc.goHome()
+            delay(500)
+            val afterTap1 = airplaneModeOn()
+            Log.i(TAG, "Despues Tap 1: airplane_mode_on=$afterTap1 (esperado distinto de $initial)")
 
-            // Espera 10s con el modo avión activo
+            // Espera 10s
+            Log.i(TAG, "Esperando 10 segundos antes del Tap 2...")
             delay(10_000)
+            Log.i(TAG, "Estado tras 10s: airplane_mode_on=${airplaneModeOn()}")
 
-            // Tap 2: desactivar
+            // Tap 2: volver al estado original
+            Log.i(TAG, "Tap 2: abriendo Quick Settings...")
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_OFF)
             svc.openQuickSettings()
-            delay(3500)
+            delay(4500)
             LiviAccessibilityService.reset()
+            svc.goHome()
+            val afterTap2 = airplaneModeOn()
+            Log.i(TAG, "===== toggleAirplane FIN airplane_mode_on=$afterTap2 (esperado $initial) =====")
 
-            Result.Success
+            if (afterTap2 == initial) Result.Success
+            else Result.Failure("Estado final airplane=$afterTap2 != inicial $initial")
         } catch (t: Throwable) {
             Log.e(TAG, "Error en toggle modo avión", t)
             LiviAccessibilityService.reset()
             Result.Failure(t.message ?: "Error desconocido")
         }
     }
+
+    private fun airplaneModeOn(): Int =
+        try { Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, -1) }
+        catch (_: Exception) { -1 }
 
     private fun isPackageInstalled(pkg: String): Boolean = try {
         context.packageManager.getPackageInfo(pkg, 0)

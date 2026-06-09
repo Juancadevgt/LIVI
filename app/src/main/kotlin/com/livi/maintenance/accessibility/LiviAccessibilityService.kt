@@ -21,6 +21,8 @@ class LiviAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
 
+    @Volatile private var lastTapAt: Long = 0L
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance.set(this)
@@ -90,20 +92,24 @@ class LiviAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * En Quick Settings el tile "Modo avión" suele estar como botón con esos
-     * textos. Algunos OEM solo lo muestran al expandir el panel.
+     * Busca el tile "Modo avión" en Quick Settings y hace tap.
+     * Anti-doble-tap: si ya tocamos hace menos de 2.5s, ignoramos eventos.
      */
     private fun handleAirplaneToggle(root: AccessibilityNodeInfo) {
+        val now = System.currentTimeMillis()
+        if (now - lastTapAt < 2500) return  // ya tocamos hace poco
+
         val tile = findNodeByAnyText(root, AIRPLANE_LABELS)
         if (tile == null) {
-            Log.w(TAG, "Tile de modo avión no encontrado en la ventana actual")
+            Log.w(TAG, "Tile no encontrado en esta ventana — esperando próximo evento")
             return
         }
-        Log.i(TAG, "Tile encontrado: ${tile.text} className=${tile.className} clickable=${tile.isClickable}")
+        Log.i(TAG, "Tile candidate: text='${tile.text}' desc='${tile.contentDescription}' " +
+            "class=${tile.className} clickable=${tile.isClickable}")
         performClickOrAncestor(tile)
-        // Tras un tap, salir de modo avión-toggle para no re-tap por más eventos
+        lastTapAt = now
+        Log.i(TAG, "Tap ejecutado sobre tile de modo avión")
         mode.set(Mode.IDLE)
-        handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 600)
     }
 
     private fun finishWithBack() {
@@ -129,8 +135,6 @@ class LiviAccessibilityService : AccessibilityService() {
                 return node
             }
         }
-        // Búsqueda profunda por content-description (los tiles de Quick Settings
-        // a veces solo tienen contentDescription, no text visible)
         return findByContentDescription(root, candidates)
     }
 
@@ -166,7 +170,13 @@ class LiviAccessibilityService : AccessibilityService() {
     }
 
     fun openQuickSettings() {
+        // Reset del anti-doble-tap para permitir el siguiente tap aunque haya pasado poco tiempo
+        lastTapAt = 0L
         performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+    }
+
+    fun goHome() {
+        performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
     companion object {
