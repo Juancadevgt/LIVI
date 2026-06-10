@@ -2,6 +2,7 @@ package com.livi.maintenance.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -9,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.livi.maintenance.LiviApp
@@ -27,11 +29,16 @@ fun AddTaskDialog(
     var action by rememberSaveable { mutableStateOf(ActionType.CLEAR_CACHE) }
     var pkg by rememberSaveable { mutableStateOf<String?>(null) }
     var pkgLabel by rememberSaveable { mutableStateOf<String?>(null) }
-    var hour by rememberSaveable { mutableIntStateOf(2) }
-    var minute by rememberSaveable { mutableIntStateOf(0) }
+    // Hora y minuto como String para permitir edición libre (vacío, borrar, etc.)
+    var hourText by rememberSaveable { mutableStateOf("00") }
+    var minuteText by rememberSaveable { mutableStateOf("00") }
     var daysMask by rememberSaveable { mutableIntStateOf(TaskEntity.EVERY_DAY) }
     var showPicker by rememberSaveable { mutableStateOf(false) }
-    var showTimePicker by rememberSaveable { mutableStateOf(false) }
+
+    val hourInt = hourText.toIntOrNull()
+    val minuteInt = minuteText.toIntOrNull()
+    val hourValid = hourInt != null && hourInt in 0..23
+    val minuteValid = minuteInt != null && minuteInt in 0..59
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium) {
@@ -80,28 +87,50 @@ fun AddTaskDialog(
 
                 Spacer(Modifier.height(12.dp))
                 Text("Hora (formato 24 h)", style = MaterialTheme.typography.labelLarge)
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp)
-                        .clickable { showTimePicker = true }
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(16.dp)
-                    ) {
-                        Text(
-                            "%02d:%02d".format(hour, minute),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            "Tocar para cambiar",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = hourText,
+                        onValueChange = { new ->
+                            if (new.length <= 2 && new.all { it.isDigit() }) {
+                                hourText = new
+                            }
+                        },
+                        label = { Text("HH") },
+                        placeholder = { Text("00") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = hourText.isNotEmpty() && !hourValid,
+                        modifier = Modifier.width(90.dp)
+                    )
+                    Text(":", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                    OutlinedTextField(
+                        value = minuteText,
+                        onValueChange = { new ->
+                            if (new.length <= 2 && new.all { it.isDigit() }) {
+                                minuteText = new
+                            }
+                        },
+                        label = { Text("MM") },
+                        placeholder = { Text("00") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = minuteText.isNotEmpty() && !minuteValid,
+                        modifier = Modifier.width(90.dp)
+                    )
+                }
+                if (hourText.isNotEmpty() && !hourValid) {
+                    Text(
+                        "Hora debe ser 00-23",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (minuteText.isNotEmpty() && !minuteValid) {
+                    Text(
+                        "Minutos deben ser 00-59",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -128,7 +157,7 @@ fun AddTaskDialog(
 
                 Spacer(Modifier.height(16.dp))
                 val needsPkg = action != ActionType.AIRPLANE_TOGGLE
-                val canSave = !needsPkg || pkg != null
+                val canSave = (!needsPkg || pkg != null) && hourValid && minuteValid
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = onDismiss) { Text("Cancelar") }
                     Spacer(Modifier.width(8.dp))
@@ -139,8 +168,8 @@ fun AddTaskDialog(
                                 TaskEntity(
                                     action = action,
                                     targetPackage = if (action == ActionType.AIRPLANE_TOGGLE) null else pkg,
-                                    hour = hour,
-                                    minute = minute,
+                                    hour = hourInt ?: 0,
+                                    minute = minuteInt ?: 0,
                                     daysOfWeek = if (daysMask == 0) TaskEntity.EVERY_DAY else daysMask,
                                     enabled = true
                                 )
@@ -162,49 +191,6 @@ fun AddTaskDialog(
             }
         )
     }
-
-    if (showTimePicker) {
-        TimePickerDialog(
-            initialHour = hour,
-            initialMinute = minute,
-            onDismiss = { showTimePicker = false },
-            onConfirm = { h, m ->
-                hour = h
-                minute = m
-                showTimePicker = false
-            }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TimePickerDialog(
-    initialHour: Int,
-    initialMinute: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (hour: Int, minute: Int) -> Unit
-) {
-    val state = rememberTimePickerState(
-        initialHour = initialHour,
-        initialMinute = initialMinute,
-        is24Hour = true
-    )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("Aceptar") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
-        },
-        title = { Text("Elige la hora") },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                TimePicker(state = state)
-            }
-        }
-    )
 }
 
 private fun labelFor(a: ActionType) = when (a) {
