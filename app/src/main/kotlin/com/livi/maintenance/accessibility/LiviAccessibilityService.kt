@@ -91,37 +91,41 @@ class LiviAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * En el diálogo de power (GLOBAL_ACTION_POWER_DIALOG) buscar y tocar "Reiniciar".
-     * Después, si aparece diálogo de confirmación, tocar el botón de confirmar.
+     * Toca "Reiniciar" repetidamente cada vez que aparezca, ya sea en el menú
+     * de power (GLOBAL_ACTION_POWER_DIALOG) o en el diálogo de confirmación.
+     * No marca IDLE — se mantiene activo hasta que el celular se reinicia
+     * (el proceso muere) o el ActionExecutor llega al timeout.
      */
     private fun handleReboot(root: AccessibilityNodeInfo) {
         val now = System.currentTimeMillis()
-        if (now - lastTapAt < 1500) return
+        if (now - lastTapAt < 700) return  // anti-rebote corto para encadenar taps
 
-        // Buscar el botón "Reiniciar"
-        val rebootBtn = findClickableByAnyText(root, REBOOT_LABELS)
-        if (rebootBtn != null) {
-            Log.i(TAG, "Reiniciar encontrado: text='${rebootBtn.text}' desc='${rebootBtn.contentDescription}'")
-            performClickOrAncestor(rebootBtn)
+        // Buscar primero "Reiniciar" (presente tanto en menú power como en diálogo)
+        var target = findClickableByAnyText(root, REBOOT_LABELS)
+        // Si no, buscar botones de confirmación genéricos (Aceptar/OK/Confirmar)
+        if (target == null) {
+            target = findClickableByAnyText(root, REBOOT_CONFIRM_LABELS)
+        }
+
+        if (target != null) {
+            Log.i(TAG, "Reiniciar/Confirmar visible: text='${target.text}' " +
+                "desc='${target.contentDescription}' class=${target.className}")
+            performClickOrAncestor(target)
             lastTapAt = now
-            taskSucceeded.set(true)
-            Log.i(TAG, "Tap ejecutado sobre Reiniciar — MARKED SUCCESS")
-            // No marcamos IDLE: puede aparecer diálogo de confirmación. Si aparece,
-            // este mismo handleReboot lo manejará en el siguiente evento.
+            taskSucceeded.set(true)  // hemos tocado al menos un botón
+
+            // Re-check forzado por si aparece otro botón (diálogo confirmación
+            // suele aparecer 500-1500ms después del primer tap)
+            handler.postDelayed({
+                if (mode.get() == Mode.REBOOT) {
+                    Log.d(TAG, "Re-check forzado tras tap en Reiniciar")
+                    rootInActiveWindow?.let { handleReboot(it) }
+                }
+            }, 1200)
             return
         }
 
-        // ¿Apareció el diálogo de confirmación "¿Reiniciar este dispositivo?"?
-        val confirmBtn = findClickableByAnyText(root, REBOOT_CONFIRM_LABELS)
-        if (confirmBtn != null) {
-            Log.i(TAG, "Confirmar reinicio encontrado: text='${confirmBtn.text}'")
-            performClickOrAncestor(confirmBtn)
-            lastTapAt = now
-            mode.set(Mode.IDLE)  // listo, el celular se va a reiniciar
-            Log.i(TAG, "Tap ejecutado sobre confirmar reinicio")
-        } else {
-            Log.d(TAG, "Ni botón Reiniciar ni Confirmar visibles aún")
-        }
+        Log.d(TAG, "Ningún botón Reiniciar/Confirmar visible — esperando")
     }
 
     private fun handleClearCache(root: AccessibilityNodeInfo) {
