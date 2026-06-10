@@ -167,12 +167,27 @@ class LiviAccessibilityService : AccessibilityService() {
         mode.set(Mode.IDLE)
     }
 
+    /**
+     * Cierra Ajustes y vuelve al Home tras completar la acción.
+     * Encadena 3 acciones globales con delays generosos para que cada navegación
+     * tenga tiempo de procesarse en celulares lentos:
+     *   1. BACK → sale de la pantalla de Almacenamiento (vuelve a App Info)
+     *   2. BACK → sale de App Info (vuelve a lista de apps)
+     *   3. HOME → vuelve a la pantalla principal del celular
+     */
     private fun finishWithBack() {
         handler.postDelayed({
+            Log.i(TAG, "finishWithBack: BACK 1 (sale de Almacenamiento)")
             performGlobalAction(GLOBAL_ACTION_BACK)
-            handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 400)
-            handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_HOME) }, 900)
-        }, 600)
+        }, 800)
+        handler.postDelayed({
+            Log.i(TAG, "finishWithBack: BACK 2 (sale de App Info)")
+            performGlobalAction(GLOBAL_ACTION_BACK)
+        }, 1500)
+        handler.postDelayed({
+            Log.i(TAG, "finishWithBack: HOME (vuelve al inicio)")
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }, 2300)
     }
 
     private fun findClickableByAnyText(

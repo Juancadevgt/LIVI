@@ -13,11 +13,9 @@ import com.livi.maintenance.data.TaskEntity
 import java.util.concurrent.TimeUnit
 
 /**
- * Notificaciones de tareas pendientes:
- *  - Primera vez (isRetry=false): solo aviso visual. La tarea se ejecuta sola
- *    al próximo desbloqueo.
- *  - Tras un Interrupted del usuario (isRetry=true): aviso + botón "Ejecutar ahora"
- *    para que el usuario pueda reintentar manualmente sin esperar al desbloqueo.
+ * Notificaciones de tareas pendientes (cuando llega la hora con celular bloqueado).
+ * Ambas variantes (primera y reintento) incluyen botón "Ejecutar ahora" para que el
+ * usuario pueda completar la tarea directo desde la notificación.
  */
 object PendingTaskNotifier {
 
@@ -34,63 +32,68 @@ object PendingTaskNotifier {
             formatElapsed(System.currentTimeMillis() - it)
         } ?: "recién"
 
-        // PendingIntent para abrir LIVI (toque normal de la notificación)
+        // PendingIntent para ejecutar la tarea (botón "Ejecutar ahora" o toque en la notificación)
+        val executeIntent = Intent(context, PendingActionReceiver::class.java).apply {
+            action = PendingActionReceiver.ACTION_EXECUTE
+            putExtra(PendingActionReceiver.EXTRA_TASK_ID, task.id)
+        }
+        val executePendingIntent = PendingIntent.getBroadcast(
+            context,
+            task.id.toInt(),
+            executeIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        // PendingIntent secundario solo para abrir LIVI
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val openPendingIntent = PendingIntent.getActivity(
             context,
-            task.id.toInt(),
+            task.id.toInt() + 200000,
             openIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val title = if (isRetry) "Reintentar tarea LIVI" else "Tarea LIVI pendiente"
+        val title = if (isRetry) "⚠️ Aviso de IT — Reintentar tarea" else "⚠️ Aviso de IT — Tarea pendiente"
         val bigText = buildString {
+            append("Aviso importante de IT\n\n")
             append(subtitle)
             append("\n\n")
             if (isRetry) {
-                append("La última ejecución se canceló hace ").append(elapsed).append(".\n")
-                append("Toca esta notificación o el botón 'Ejecutar ahora' para reintentar.")
+                append("La última ejecución se canceló hace ").append(elapsed).append(".\n\n")
             } else {
-                append("Programada hace ").append(elapsed).append(".\n")
-                append("Toca esta notificación para ejecutar la tarea ahora.")
+                append("Programada hace ").append(elapsed).append(".\n\n")
             }
+            append("Toca el botón 'Ejecutar ahora' para completar la tarea de mantenimiento. ")
+            append("LIVI abrirá Ajustes, ejecutará la acción y volverá automáticamente.")
         }
 
-        val builder = NotificationCompat.Builder(
+        val notification = NotificationCompat.Builder(
             context,
             context.getString(R.string.notification_channel_id)
         )
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title)
-            .setContentText("Toca para ejecutar · hace $elapsed")
+            .setContentText("$subtitle · hace $elapsed")
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            .setContentIntent(openPendingIntent)
-
-        // Solo en reintento se agrega el botón "Ejecutar ahora"
-        if (isRetry) {
-            val executeIntent = Intent(context, PendingActionReceiver::class.java).apply {
-                action = PendingActionReceiver.ACTION_EXECUTE
-                putExtra(PendingActionReceiver.EXTRA_TASK_ID, task.id)
-            }
-            val executePendingIntent = PendingIntent.getBroadcast(
-                context,
-                task.id.toInt() + 200000,
-                executeIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-            builder.addAction(
+            .setContentIntent(executePendingIntent)  // tocar la notif también ejecuta
+            .addAction(
                 android.R.drawable.ic_media_play,
                 "Ejecutar ahora",
                 executePendingIntent
             )
-        }
+            .addAction(
+                android.R.drawable.ic_menu_view,
+                "Abrir LIVI",
+                openPendingIntent
+            )
+            .build()
 
         try {
-            NotificationManagerCompat.from(context).notify(task.id.toInt(), builder.build())
+            NotificationManagerCompat.from(context).notify(task.id.toInt(), notification)
         } catch (_: SecurityException) {
             // Permiso POST_NOTIFICATIONS no otorgado
         }
