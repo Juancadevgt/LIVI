@@ -32,6 +32,9 @@ class LiviAccessibilityService : AccessibilityService() {
      *  Se usa para distinguir entre Android calculando tamaño (~1-2s) vs caché ya vacía (>4s).
      */
     @Volatile private var firstSeenDisabledAt: Long = 0L
+    /** Intentos de scroll realizados en la pantalla actual para encontrar "Almacenamiento".
+     *  Se resetea al cambiar de modo. */
+    @Volatile private var scrollAttempts: Int = 0
 
     private var dynamicUnlockReceiver: UnlockReceiver? = null
 
@@ -142,6 +145,7 @@ class LiviAccessibilityService : AccessibilityService() {
             Log.i(TAG, "Tap en Almacenamiento para entrar (text='${storageEntry.text}')")
             performClickOrAncestor(storageEntry)
             lastTapAt = now
+            scrollAttempts = 0  // entramos en nueva pantalla, resetear scrolls
             // Re-check forzado en 1.5s: la nueva pantalla puede no disparar más eventos
             // (especialmente en Samsung One UI), entonces forzamos volver a evaluar.
             handler.postDelayed({
@@ -150,9 +154,47 @@ class LiviAccessibilityService : AccessibilityService() {
                     rootInActiveWindow?.let { handleClearCache(it) }
                 }
             }, 1500)
-        } else {
-            Log.d(TAG, "Ni Borrar caché ni Almacenamiento visibles aún")
+            return
         }
+
+        // Si no encontramos "Almacenamiento" en pantalla, puede estar fuera del viewport.
+        // Intentar scrollear hacia abajo para revelar items de menú ocultos.
+        if (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
+            val scrollable = findScrollableNode(root)
+            if (scrollable != null) {
+                scrollAttempts++
+                Log.i(TAG, "Almacenamiento no visible — scrollAttempt $scrollAttempts/$MAX_SCROLL_ATTEMPTS")
+                val ok = scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                if (ok) {
+                    handler.postDelayed({
+                        if (mode.get() == Mode.CLEAR_CACHE) {
+                            rootInActiveWindow?.let { handleClearCache(it) }
+                        }
+                    }, 700)
+                } else {
+                    Log.w(TAG, "scrollForward retornó false — no se puede scrollear más")
+                }
+                return
+            }
+            Log.d(TAG, "No hay nodo scrollable en esta pantalla")
+        } else {
+            Log.w(TAG, "Alcanzado max scroll attempts ($MAX_SCROLL_ATTEMPTS)")
+        }
+        Log.d(TAG, "Ni Borrar caché ni Almacenamiento visibles aún")
+    }
+
+    /**
+     * Busca el primer nodo scrolleable en la jerarquía. Típicamente un ScrollView,
+     * RecyclerView o NestedScrollView.
+     */
+    private fun findScrollableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isScrollable) return node
+        for (i in 0 until node.childCount) {
+            val found = findScrollableNode(node.getChild(i))
+            if (found != null) return found
+        }
+        return null
     }
 
     private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -335,8 +377,10 @@ class LiviAccessibilityService : AccessibilityService() {
         /** Resetea el flag de éxito antes de iniciar una nueva tarea */
         fun resetSuccess() {
             taskSucceeded.set(false)
-            // También reseteamos el contador de "botón deshabilitado" en la instancia activa
-            instance.get()?.firstSeenDisabledAt = 0L
+            instance.get()?.let {
+                it.firstSeenDisabledAt = 0L
+                it.scrollAttempts = 0
+            }
         }
         /** Devuelve true si el tap real se ejecutó durante la última tarea */
         fun wasSuccessful(): Boolean = taskSucceeded.get()
@@ -344,5 +388,8 @@ class LiviAccessibilityService : AccessibilityService() {
         /** Tiempo máximo en ms para esperar a que Android termine de calcular el tamaño
          *  de la caché antes de asumir que está vacía. */
         private const val CACHE_EMPTY_TIMEOUT_MS = 4_000L
+
+        /** Máximo de scrolls automáticos antes de rendirse buscando "Almacenamiento". */
+        private const val MAX_SCROLL_ATTEMPTS = 6
     }
 }
