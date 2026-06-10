@@ -17,22 +17,38 @@ import com.livi.maintenance.LiviApp
 import com.livi.maintenance.actions.ActionType
 import com.livi.maintenance.data.TaskEntity
 
+/**
+ * Diálogo para crear o editar una tarea. Si `existing` se proporciona, los
+ * campos se pre-llenan y al guardar se conserva el id (UPDATE en Room).
+ * Si es null, se crea una nueva (INSERT).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTaskDialog(
     onDismiss: () -> Unit,
-    onSave: (TaskEntity) -> Unit
+    onSave: (TaskEntity) -> Unit,
+    existing: TaskEntity? = null
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as LiviApp
+    val isEditing = existing != null
 
-    var action by rememberSaveable { mutableStateOf(ActionType.CLEAR_CACHE) }
-    var pkg by rememberSaveable { mutableStateOf<String?>(null) }
-    var pkgLabel by rememberSaveable { mutableStateOf<String?>(null) }
-    // Hora y minuto como String para permitir edición libre (vacío, borrar, etc.)
-    var hourText by rememberSaveable { mutableStateOf("00") }
-    var minuteText by rememberSaveable { mutableStateOf("00") }
-    var daysMask by rememberSaveable { mutableIntStateOf(TaskEntity.EVERY_DAY) }
+    var action by rememberSaveable {
+        mutableStateOf(existing?.action ?: ActionType.CLEAR_CACHE)
+    }
+    var pkg by rememberSaveable { mutableStateOf(existing?.targetPackage) }
+    var pkgLabel by rememberSaveable {
+        mutableStateOf(existing?.targetPackage?.let { app.appRepository.getAppLabel(it) })
+    }
+    var hourText by rememberSaveable {
+        mutableStateOf("%02d".format(existing?.hour ?: 0))
+    }
+    var minuteText by rememberSaveable {
+        mutableStateOf("%02d".format(existing?.minute ?: 0))
+    }
+    var daysMask by rememberSaveable {
+        mutableIntStateOf(existing?.daysOfWeek?.takeIf { it != 0 } ?: TaskEntity.EVERY_DAY)
+    }
     var showPicker by rememberSaveable { mutableStateOf(false) }
 
     val hourInt = hourText.toIntOrNull()
@@ -43,7 +59,10 @@ fun AddTaskDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium) {
             Column(Modifier.padding(20.dp)) {
-                Text("Nueva tarea", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    if (isEditing) "Editar tarea" else "Nueva tarea",
+                    style = MaterialTheme.typography.titleLarge
+                )
                 Spacer(Modifier.height(12.dp))
 
                 Text("Acción", style = MaterialTheme.typography.labelLarge)
@@ -166,16 +185,19 @@ fun AddTaskDialog(
                         onClick = {
                             onSave(
                                 TaskEntity(
+                                    id = existing?.id ?: 0,
                                     action = action,
                                     targetPackage = if (action == ActionType.AIRPLANE_TOGGLE) null else pkg,
                                     hour = hourInt ?: 0,
                                     minute = minuteInt ?: 0,
                                     daysOfWeek = if (daysMask == 0) TaskEntity.EVERY_DAY else daysMask,
-                                    enabled = true
+                                    enabled = existing?.enabled ?: true,
+                                    lastRunAt = existing?.lastRunAt,
+                                    lastResult = existing?.lastResult
                                 )
                             )
                         }
-                    ) { Text("Guardar") }
+                    ) { Text(if (isEditing) "Actualizar" else "Guardar") }
                 }
             }
         }
