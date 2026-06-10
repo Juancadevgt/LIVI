@@ -239,11 +239,31 @@ class LiviAccessibilityService : AccessibilityService() {
         root: AccessibilityNodeInfo,
         candidates: List<String>
     ): AccessibilityNodeInfo? {
+        // Primera pasada: priorizar nodos clickeables o con ancestro clickeable.
+        // Esto evita confundir títulos de sección (no clickeables) con items reales del menú.
+        for (text in candidates) {
+            val list = root.findAccessibilityNodeInfosByText(text) ?: continue
+            for (node in list) {
+                if (isClickableOrHasClickableAncestor(node)) return node
+            }
+        }
+        // Segunda pasada: cualquier nodo con ese texto (último recurso)
         for (text in candidates) {
             val list = root.findAccessibilityNodeInfosByText(text) ?: continue
             for (node in list) return node
         }
         return findByContentDescription(root, candidates)
+    }
+
+    private fun isClickableOrHasClickableAncestor(node: AccessibilityNodeInfo): Boolean {
+        var n: AccessibilityNodeInfo? = node
+        var hops = 0
+        while (n != null && hops < 5) {
+            if (n.isClickable) return true
+            n = n.parent
+            hops++
+        }
+        return false
     }
 
     private fun findByContentDescription(
