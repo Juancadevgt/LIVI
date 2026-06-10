@@ -139,9 +139,17 @@ class LiviAccessibilityService : AccessibilityService() {
 
         val storageEntry = findClickableByAnyText(root, STORAGE_LABELS)
         if (storageEntry != null) {
-            Log.i(TAG, "Tap en Almacenamiento para entrar")
+            Log.i(TAG, "Tap en Almacenamiento para entrar (text='${storageEntry.text}')")
             performClickOrAncestor(storageEntry)
             lastTapAt = now
+            // Re-check forzado en 1.5s: la nueva pantalla puede no disparar más eventos
+            // (especialmente en Samsung One UI), entonces forzamos volver a evaluar.
+            handler.postDelayed({
+                if (mode.get() == Mode.CLEAR_CACHE) {
+                    Log.d(TAG, "Re-check forzado tras tap en Almacenamiento")
+                    rootInActiveWindow?.let { handleClearCache(it) }
+                }
+            }, 1500)
         } else {
             Log.d(TAG, "Ni Borrar caché ni Almacenamiento visibles aún")
         }
