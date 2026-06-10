@@ -85,6 +85,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Si el usuario descarta la notificacion, la re-mostramos hasta que la ejecute -->
+        <receiver
+            android:name=".scheduler.NotificationDismissedReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Recibe el desbloqueo del celular para auto-ejecutar tareas pendientes -->
         <receiver
             android:name=".scheduler.UnlockReceiver"

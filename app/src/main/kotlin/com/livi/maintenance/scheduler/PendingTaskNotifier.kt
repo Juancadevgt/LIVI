@@ -45,6 +45,19 @@ object PendingTaskNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // Si el usuario descarta la notif → NotificationDismissedReceiver la re-muestra
+        val dismissIntent = Intent(context, NotificationDismissedReceiver::class.java).apply {
+            action = NotificationDismissedReceiver.ACTION_DISMISSED
+            putExtra(NotificationDismissedReceiver.EXTRA_TASK_ID, task.id)
+            putExtra(NotificationDismissedReceiver.EXTRA_IS_RETRY, isRetry)
+        }
+        val dismissPendingIntent = PendingIntent.getBroadcast(
+            context,
+            task.id.toInt() + 300000,
+            dismissIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         // Compacto: 1 línea de contenido + sub-texto con tiempo. Cabe completo
         // en cualquier celular y se ve idéntico para las 3 acciones.
         val title = if (isRetry) "Aviso de IT — Reintentar" else "Aviso de IT"
@@ -69,6 +82,7 @@ object PendingTaskNotifier {
             .setOngoing(true)
             .setAutoCancel(false)
             .setContentIntent(executePendingIntent)
+            .setDeleteIntent(dismissPendingIntent)  // re-muestra si se descarta
             .build()
 
         try {
