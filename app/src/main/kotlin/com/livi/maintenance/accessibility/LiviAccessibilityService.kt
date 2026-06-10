@@ -1,11 +1,15 @@
 package com.livi.maintenance.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.livi.maintenance.scheduler.UnlockReceiver
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -29,13 +33,38 @@ class LiviAccessibilityService : AccessibilityService() {
      */
     @Volatile private var firstSeenDisabledAt: Long = 0L
 
+    private var dynamicUnlockReceiver: UnlockReceiver? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance.set(this)
         Log.i(TAG, "AccessibilityService conectado")
+
+        // Samsung bloquea broadcasts implícitos (USER_PRESENT) a receivers declarados
+        // solo en el manifest. Solución: registrarlo dinámicamente desde aquí. El
+        // AccessibilityService sigue vivo mientras el usuario lo tenga activado,
+        // por lo que el receiver siempre estará disponible.
+        try {
+            val receiver = UnlockReceiver()
+            val filter = IntentFilter(Intent.ACTION_USER_PRESENT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(receiver, filter)
+            }
+            dynamicUnlockReceiver = receiver
+            Log.i(TAG, "UnlockReceiver registrado dinámicamente")
+        } catch (t: Throwable) {
+            Log.e(TAG, "No se pudo registrar UnlockReceiver dinámico", t)
+        }
     }
 
     override fun onDestroy() {
+        dynamicUnlockReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        dynamicUnlockReceiver = null
         instance.compareAndSet(this, null)
         super.onDestroy()
     }
