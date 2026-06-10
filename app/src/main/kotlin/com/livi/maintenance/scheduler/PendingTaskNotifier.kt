@@ -6,16 +6,16 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.livi.maintenance.LiviApp
-import com.livi.maintenance.MainActivity
 import com.livi.maintenance.R
 import com.livi.maintenance.actions.ActionType
 import com.livi.maintenance.data.TaskEntity
 import java.util.concurrent.TimeUnit
 
 /**
- * Notificaciones de tareas pendientes (cuando llega la hora con celular bloqueado).
- * Ambas variantes (primera y reintento) incluyen botón "Ejecutar ahora" para que el
- * usuario pueda completar la tarea directo desde la notificación.
+ * Notificaciones de tareas pendientes.
+ * - Sin botones: el toque sobre la notificación dispara la ejecución directa.
+ * - setOngoing(true): el usuario NO puede deslizar para descartarla. Solo se
+ *   cierra cuando la tarea complete exitosamente.
  */
 object PendingTaskNotifier {
 
@@ -32,7 +32,7 @@ object PendingTaskNotifier {
             formatElapsed(System.currentTimeMillis() - it)
         } ?: "recién"
 
-        // PendingIntent para ejecutar la tarea (botón "Ejecutar ahora" o toque en la notificación)
+        // Al tocar la notificación → PendingActionReceiver ejecuta la tarea directamente
         val executeIntent = Intent(context, PendingActionReceiver::class.java).apply {
             action = PendingActionReceiver.ACTION_EXECUTE
             putExtra(PendingActionReceiver.EXTRA_TASK_ID, task.id)
@@ -41,17 +41,6 @@ object PendingTaskNotifier {
             context,
             task.id.toInt(),
             executeIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        // PendingIntent secundario solo para abrir LIVI
-        val openIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val openPendingIntent = PendingIntent.getActivity(
-            context,
-            task.id.toInt() + 200000,
-            openIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -65,8 +54,9 @@ object PendingTaskNotifier {
             } else {
                 append("Programada hace ").append(elapsed).append(".\n\n")
             }
-            append("Toca el botón 'Ejecutar ahora' para completar la tarea de mantenimiento. ")
-            append("LIVI abrirá Ajustes, ejecutará la acción y volverá automáticamente.")
+            append("Toca esta notificación para ejecutar la tarea ahora. ")
+            append("LIVI abrirá Ajustes, completará la acción y volverá automáticamente. ")
+            append("La notificación se cerrará sola cuando la tarea termine.")
         }
 
         val notification = NotificationCompat.Builder(
@@ -75,21 +65,12 @@ object PendingTaskNotifier {
         )
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title)
-            .setContentText("$subtitle · hace $elapsed")
+            .setContentText("Toca para ejecutar ahora · $subtitle")
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(executePendingIntent)  // tocar la notif también ejecuta
-            .addAction(
-                android.R.drawable.ic_media_play,
-                "Ejecutar ahora",
-                executePendingIntent
-            )
-            .addAction(
-                android.R.drawable.ic_menu_view,
-                "Abrir LIVI",
-                openPendingIntent
-            )
+            .setOngoing(true)         // No se puede deslizar para descartar
+            .setAutoCancel(false)     // No se auto-cierra al tocar (se cierra cuando complete)
+            .setContentIntent(executePendingIntent)
             .build()
 
         try {

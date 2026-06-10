@@ -49,6 +49,9 @@ fun AddTaskDialog(
     var daysMask by rememberSaveable {
         mutableIntStateOf(existing?.daysOfWeek?.takeIf { it != 0 } ?: TaskEntity.EVERY_DAY)
     }
+    var repeatWeeks by rememberSaveable {
+        mutableIntStateOf(existing?.repeatWeeks?.coerceIn(1, 4) ?: 1)
+    }
     var showPicker by rememberSaveable { mutableStateOf(false) }
 
     val hourInt = hourText.toIntOrNull()
@@ -153,6 +156,30 @@ fun AddTaskDialog(
                 }
 
                 Spacer(Modifier.height(12.dp))
+                Text("Frecuencia", style = MaterialTheme.typography.labelLarge)
+                Row {
+                    listOf(1, 2, 3, 4).forEach { n ->
+                        FilterChip(
+                            selected = repeatWeeks == n,
+                            onClick = { repeatWeeks = n },
+                            label = {
+                                Text(
+                                    when (n) {
+                                        1 -> "Cada semana"
+                                        2 -> "Cada 2 sem"
+                                        3 -> "Cada 3 sem"
+                                        4 -> "Cada 4 sem (~mes)"
+                                        else -> "$n sem"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            },
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
                 Text("Días", style = MaterialTheme.typography.labelLarge)
                 val days = listOf(
                     "L" to TaskEntity.DAY_MON,
@@ -193,7 +220,9 @@ fun AddTaskDialog(
                                     daysOfWeek = if (daysMask == 0) TaskEntity.EVERY_DAY else daysMask,
                                     enabled = existing?.enabled ?: true,
                                     lastRunAt = existing?.lastRunAt,
-                                    lastResult = existing?.lastResult
+                                    lastResult = existing?.lastResult,
+                                    pendingExecution = existing?.pendingExecution,
+                                    repeatWeeks = repeatWeeks
                                 )
                             )
                         }

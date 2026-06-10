@@ -72,21 +72,38 @@ class Scheduler(private val context: Context) {
     private fun tagFor(id: Long) = "livi_task_tag_$id"
 
     /**
-     * Próximo momento en milis considerando `hour`, `minute` y bitmask `daysOfWeek`.
+     * Próximo momento en milis considerando `hour`, `minute`, bitmask `daysOfWeek`
+     * y la frecuencia `repeatWeeks` (1=semanal, 2=quincenal, 3=cada 3 sem, 4=mensual aprox).
+     *
+     * Si `repeatWeeks > 1`, asegura que entre ejecuciones pasen al menos
+     * `repeatWeeks` semanas desde `lastRunAt`.
      */
     private fun nextRunMillis(task: TaskEntity): Long {
-        val now = Calendar.getInstance()
+        val nowMs = System.currentTimeMillis()
+
+        // Si hay repetición de N semanas y ya se ejecutó antes, el punto de
+        // partida no es "ahora" sino "última + N semanas"
+        val earliestMs = if (task.repeatWeeks > 1 && task.lastRunAt != null) {
+            maxOf(nowMs, task.lastRunAt + task.repeatWeeks * 7L * 24L * 3600_000L)
+        } else nowMs
+
         val candidate = Calendar.getInstance().apply {
+            timeInMillis = earliestMs
             set(Calendar.HOUR_OF_DAY, task.hour)
             set(Calendar.MINUTE, task.minute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
+        // Si la hora ya pasó en el día earliestMs, avanzar al día siguiente
+        if (candidate.timeInMillis <= earliestMs) {
+            candidate.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
         val mask = if (task.daysOfWeek == 0) TaskEntity.EVERY_DAY else task.daysOfWeek
         for (i in 0..7) {
             val day = candidate.get(Calendar.DAY_OF_WEEK)
             val bit = dayOfWeekToBit(day)
-            if ((mask and bit) != 0 && candidate.timeInMillis > now.timeInMillis) {
+            if ((mask and bit) != 0 && candidate.timeInMillis > nowMs) {
                 return candidate.timeInMillis
             }
             candidate.add(Calendar.DAY_OF_YEAR, 1)

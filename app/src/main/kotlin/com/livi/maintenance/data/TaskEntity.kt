@@ -15,13 +15,18 @@ data class TaskEntity(
     val enabled: Boolean = true,
     val lastRunAt: Long? = null,
     val lastResult: String? = null,
+    val pendingExecution: Long? = null,
     /**
-     * Si != null: la tarea iba a ejecutarse en ese momento pero el celular estaba
-     * bloqueado / con pantalla apagada y LIVI no es Device Owner, entonces se difirió.
-     * Se ejecutará cuando el usuario desbloquee el celular (ACTION_USER_PRESENT)
-     * o cuando toque la notificación pendiente.
+     * Cada cuántas semanas se repite la tarea:
+     * - 1: cada semana (todos los días marcados en daysOfWeek)
+     * - 2: cada 2 semanas
+     * - 3: cada 3 semanas
+     * - 4: cada 4 semanas (aproximadamente 1 vez al mes)
+     *
+     * El Scheduler considera `lastRunAt` para asegurar que entre ejecuciones
+     * pasen al menos `repeatWeeks` semanas.
      */
-    val pendingExecution: Long? = null
+    val repeatWeeks: Int = 1
 ) {
     companion object {
         const val DAY_MON = 1 shl 0

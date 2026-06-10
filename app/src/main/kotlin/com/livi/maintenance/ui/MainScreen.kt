@@ -314,7 +314,10 @@ private fun TaskRow(
             if (!pkgLabel.isNullOrBlank()) {
                 Text(pkgLabel, style = MaterialTheme.typography.bodySmall)
             }
-            Text("$timeStr · ${daysLabel(task.daysOfWeek)}", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "$timeStr · ${daysLabel(task.daysOfWeek)} · ${frequencyLabel(task.repeatWeeks)}",
+                style = MaterialTheme.typography.bodySmall
+            )
             task.lastResult?.let {
                 Text("Última: $it", style = MaterialTheme.typography.labelSmall)
             }
@@ -327,6 +330,14 @@ private fun TaskRow(
             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete))
         }
     }
+}
+
+private fun frequencyLabel(weeks: Int): String = when (weeks) {
+    1 -> "cada semana"
+    2 -> "cada 2 semanas"
+    3 -> "cada 3 semanas"
+    4 -> "cada 4 semanas"
+    else -> "cada $weeks semanas"
 }
 
 private fun daysLabel(mask: Int): String {
