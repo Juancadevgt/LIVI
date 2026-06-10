@@ -156,31 +156,40 @@ fun AddTaskDialog(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Text("Frecuencia", style = MaterialTheme.typography.labelLarge)
-                Row {
+                Text("Frecuencia (semanas)", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     listOf(1, 2, 3, 4).forEach { n ->
                         FilterChip(
                             selected = repeatWeeks == n,
                             onClick = { repeatWeeks = n },
                             label = {
                                 Text(
-                                    when (n) {
-                                        1 -> "Cada semana"
-                                        2 -> "Cada 2 sem"
-                                        3 -> "Cada 3 sem"
-                                        4 -> "Cada 4 sem (~mes)"
-                                        else -> "$n sem"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall
+                                    "$n sem",
+                                    style = MaterialTheme.typography.labelMedium
                                 )
                             },
-                            modifier = Modifier.padding(end = 4.dp)
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
+                Text(
+                    text = when (repeatWeeks) {
+                        1 -> "Se ejecuta cada semana"
+                        2 -> "Se ejecuta cada 2 semanas"
+                        3 -> "Se ejecuta cada 3 semanas"
+                        4 -> "Se ejecuta cada 4 semanas (~ 1 vez al mes)"
+                        else -> "Se ejecuta cada $repeatWeeks semanas"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
 
                 Spacer(Modifier.height(12.dp))
-                Text("Días", style = MaterialTheme.typography.labelLarge)
+                Text("Días de la semana", style = MaterialTheme.typography.labelLarge)
                 val days = listOf(
                     "L" to TaskEntity.DAY_MON,
                     "M" to TaskEntity.DAY_TUE,
@@ -190,13 +199,21 @@ fun AddTaskDialog(
                     "S" to TaskEntity.DAY_SAT,
                     "D" to TaskEntity.DAY_SUN
                 )
-                Row {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     days.forEach { (label, bit) ->
                         FilterChip(
                             selected = (daysMask and bit) != 0,
                             onClick = { daysMask = daysMask xor bit },
-                            label = { Text(label) },
-                            modifier = Modifier.padding(end = 4.dp)
+                            label = {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
