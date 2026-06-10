@@ -31,6 +31,7 @@ fun AddTaskDialog(
     var minute by rememberSaveable { mutableIntStateOf(0) }
     var daysMask by rememberSaveable { mutableIntStateOf(TaskEntity.EVERY_DAY) }
     var showPicker by rememberSaveable { mutableStateOf(false) }
+    var showTimePicker by rememberSaveable { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium) {
@@ -78,21 +79,29 @@ fun AddTaskDialog(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Text("Hora: %02d:%02d".format(hour, minute), style = MaterialTheme.typography.labelLarge)
-                Row {
-                    OutlinedTextField(
-                        value = hour.toString(),
-                        onValueChange = { it.toIntOrNull()?.let { v -> if (v in 0..23) hour = v } },
-                        label = { Text("HH") },
-                        modifier = Modifier.width(80.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedTextField(
-                        value = minute.toString(),
-                        onValueChange = { it.toIntOrNull()?.let { v -> if (v in 0..59) minute = v } },
-                        label = { Text("MM") },
-                        modifier = Modifier.width(80.dp)
-                    )
+                Text("Hora (formato 24 h)", style = MaterialTheme.typography.labelLarge)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                        .clickable { showTimePicker = true }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    ) {
+                        Text(
+                            "%02d:%02d".format(hour, minute),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "Tocar para cambiar",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -153,6 +162,49 @@ fun AddTaskDialog(
             }
         )
     }
+
+    if (showTimePicker) {
+        TimePickerDialog(
+            initialHour = hour,
+            initialMinute = minute,
+            onDismiss = { showTimePicker = false },
+            onConfirm = { h, m ->
+                hour = h
+                minute = m
+                showTimePicker = false
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (hour: Int, minute: Int) -> Unit
+) {
+    val state = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = true
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("Aceptar") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        },
+        title = { Text("Elige la hora") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                TimePicker(state = state)
+            }
+        }
+    )
 }
 
 private fun labelFor(a: ActionType) = when (a) {
