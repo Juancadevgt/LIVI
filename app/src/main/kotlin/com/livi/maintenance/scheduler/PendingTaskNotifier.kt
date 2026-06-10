@@ -45,19 +45,13 @@ object PendingTaskNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val title = if (isRetry) "⚠️ Aviso de IT — Reintentar tarea" else "⚠️ Aviso de IT — Tarea pendiente"
+        // Notificación corta y directa: el usuario debe entender QUÉ y QUÉ HACER de un vistazo.
+        val title = if (isRetry) "Aviso de IT: reintentar tarea" else "Aviso de IT: tarea pendiente"
+        val contentText = "$subtitle · hace $elapsed"
         val bigText = buildString {
-            append("Aviso importante de IT\n\n")
-            append(subtitle)
-            append("\n\n")
-            if (isRetry) {
-                append("La última ejecución se canceló hace ").append(elapsed).append(".\n\n")
-            } else {
-                append("Programada hace ").append(elapsed).append(".\n\n")
-            }
-            append("Toca esta notificación para ejecutar la tarea ahora. ")
-            append("LIVI abrirá Ajustes, completará la acción y volverá automáticamente. ")
-            append("La notificación se cerrará sola cuando la tarea termine.")
+            append(subtitle).append("\n")
+            append(if (isRetry) "Cancelada hace " else "Pendiente hace ").append(elapsed).append(".\n\n")
+            append("Toca aquí para ejecutar.")
         }
 
         val notification = NotificationCompat.Builder(
@@ -66,11 +60,11 @@ object PendingTaskNotifier {
         )
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title)
-            .setContentText("Toca para ejecutar ahora · $subtitle")
+            .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setOngoing(true)         // No se puede deslizar para descartar
-            .setAutoCancel(false)     // No se auto-cierra al tocar (se cierra cuando complete)
+            .setOngoing(true)
+            .setAutoCancel(false)
             .setContentIntent(executePendingIntent)
             .build()
 
