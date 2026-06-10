@@ -29,6 +29,10 @@ class ActionExecutor(
      * - Si LIVI es Device Owner: usa DevicePolicyManager.reboot() — instantáneo, sin UI.
      * - Si NO: abre el power dialog (Accessibility) y toca "Reiniciar" automáticamente,
      *   luego confirma si aparece un diálogo de confirmación.
+     *
+     * IMPORTANTE: detecta el primer tap exitoso con polling cada 300ms y retorna
+     * Success rápido. Esto permite al LiviWorker hacer cleanup (cancelar notificación,
+     * marcar tarea OK) ANTES de que el sistema mate el proceso por el reinicio.
      */
     private suspend fun rebootDevice(): Result {
         if (policyManager.isDeviceOwner()) {
@@ -44,18 +48,27 @@ class ActionExecutor(
         return try {
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.REBOOT)
             svc.openPowerDialog()
-            // Le damos tiempo a que aparezca el menú, el service tape Reiniciar,
-            // aparezca el diálogo de confirmación y el service tape confirmar.
-            delay(10_000)
-            val success = LiviAccessibilityService.wasSuccessful()
-            LiviAccessibilityService.reset()
-            if (success) {
-                Log.i(TAG, "rebootDevice: tap exitoso sobre Reiniciar — el sistema procede a reiniciar")
-                Result.Success
-            } else {
-                Log.w(TAG, "rebootDevice: no se pudo encontrar/tocar el botón Reiniciar")
-                Result.Interrupted("No se pudo reiniciar (botón no detectado)")
+
+            // Polling cada 300ms hasta detectar success o timeout 10s
+            var elapsed = 0L
+            while (elapsed < 10_000) {
+                delay(300)
+                elapsed += 300
+                if (LiviAccessibilityService.wasSuccessful()) {
+                    Log.i(TAG, "rebootDevice: tap exitoso detectado tras ${elapsed}ms")
+                    // Esperar 1.5s para que el segundo tap (diálogo confirmación) se haga,
+                    // pero MENOS de lo que tarda el sistema en matar el proceso (~3-5s).
+                    // Esto deja tiempo al LiviWorker de hacer cleanup antes del reinicio.
+                    delay(1500)
+                    LiviAccessibilityService.reset()
+                    Log.i(TAG, "rebootDevice: retornando Success — LiviWorker hará cleanup antes del reboot")
+                    return Result.Success
+                }
             }
+            // 10s sin éxito
+            LiviAccessibilityService.reset()
+            Log.w(TAG, "rebootDevice: no se pudo encontrar/tocar el botón Reiniciar en 10s")
+            Result.Interrupted("No se pudo reiniciar (botón no detectado)")
         } catch (t: Throwable) {
             Log.e(TAG, "Error en rebootDevice", t)
             LiviAccessibilityService.reset()
