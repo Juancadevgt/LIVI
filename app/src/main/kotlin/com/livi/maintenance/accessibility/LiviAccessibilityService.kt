@@ -10,14 +10,14 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Servicio de accesibilidad que automatiza UI de Ajustes y Quick Settings:
- *  - CLEAR_CACHE / CLEAR_DATA: navega a la info de la app y pulsa el botón
+ *  - CLEAR_CACHE: navega a la info de la app y pulsa "Borrar caché"
  *  - AIRPLANE_TOGGLE_ON / AIRPLANE_TOGGLE_OFF: abre Quick Settings y toca
  *    el botón "Modo avión" (única forma confiable de apagar radios reales
  *    en Android moderno sin Device Owner)
  */
 class LiviAccessibilityService : AccessibilityService() {
 
-    enum class Mode { IDLE, CLEAR_CACHE, CLEAR_DATA, AIRPLANE_TOGGLE_ON, AIRPLANE_TOGGLE_OFF }
+    enum class Mode { IDLE, CLEAR_CACHE, AIRPLANE_TOGGLE_ON, AIRPLANE_TOGGLE_OFF }
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -46,7 +46,6 @@ class LiviAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         when (m) {
             Mode.CLEAR_CACHE -> handleClearCache(root)
-            Mode.CLEAR_DATA -> handleClearData(root)
             Mode.AIRPLANE_TOGGLE_ON, Mode.AIRPLANE_TOGGLE_OFF -> handleAirplaneToggle(root)
             Mode.IDLE -> {}
         }
@@ -69,35 +68,13 @@ class LiviAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun handleClearData(root: AccessibilityNodeInfo) {
-        val storageEntry = findClickableByAnyText(root, listOf(
-            "Almacenamiento y caché", "Almacenamiento", "Storage & cache", "Storage"
-        ))
-        if (storageEntry != null) { performClickOrAncestor(storageEntry); return }
-
-        val clearData = findClickableByAnyText(root, listOf(
-            "Borrar datos", "Borrar almacenamiento", "Borrar todos los datos",
-            "Administrar espacio", "Clear storage", "Clear data"
-        ))
-        if (clearData != null) { performClickOrAncestor(clearData); return }
-
-        val confirm = findClickableByAnyText(root, listOf(
-            "Aceptar", "OK", "Borrar", "Eliminar", "Confirmar"
-        ))
-        if (confirm != null) {
-            performClickOrAncestor(confirm)
-            mode.set(Mode.IDLE)
-            finishWithBack()
-        }
-    }
-
     /**
      * Busca el tile "Modo avión" en Quick Settings y hace tap.
      * Anti-doble-tap: si ya tocamos hace menos de 2.5s, ignoramos eventos.
      */
     private fun handleAirplaneToggle(root: AccessibilityNodeInfo) {
         val now = System.currentTimeMillis()
-        if (now - lastTapAt < 2500) return  // ya tocamos hace poco
+        if (now - lastTapAt < 2500) return
 
         val tile = findNodeByAnyText(root, AIRPLANE_LABELS)
         if (tile == null) {
@@ -170,7 +147,6 @@ class LiviAccessibilityService : AccessibilityService() {
     }
 
     fun openQuickSettings() {
-        // Reset del anti-doble-tap para permitir el siguiente tap aunque haya pasado poco tiempo
         lastTapAt = 0L
         performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
     }

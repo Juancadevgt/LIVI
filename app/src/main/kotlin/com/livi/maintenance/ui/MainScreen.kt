@@ -1,6 +1,5 @@
 package com.livi.maintenance.ui
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -19,10 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.livi.maintenance.LiviApp
 import com.livi.maintenance.R
 import com.livi.maintenance.accessibility.LiviAccessibilityService
 import com.livi.maintenance.actions.ActionType
-import com.livi.maintenance.actions.KnownPackages
 import com.livi.maintenance.data.TaskEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -125,10 +124,13 @@ private fun TaskRow(
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
-    val pkgLabel = task.targetPackage?.let { KnownPackages.LABELS[it] ?: it }
+    val context = LocalContext.current
+    val app = context.applicationContext as LiviApp
+    val pkgLabel = remember(task.targetPackage) {
+        task.targetPackage?.let { app.appRepository.getAppLabel(it) }
+    }
     val actionLabel = when (task.action) {
         ActionType.CLEAR_CACHE -> stringResource(R.string.task_clear_cache)
-        ActionType.CLEAR_DATA -> stringResource(R.string.task_clear_data)
         ActionType.AIRPLANE_TOGGLE -> stringResource(R.string.task_airplane_toggle)
     }
     val timeStr = "%02d:%02d".format(task.hour, task.minute)
@@ -138,7 +140,7 @@ private fun TaskRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(actionLabel, fontWeight = FontWeight.SemiBold)
-            if (pkgLabel != null) {
+            if (!pkgLabel.isNullOrBlank()) {
                 Text(pkgLabel, style = MaterialTheme.typography.bodySmall)
             }
             Text("$timeStr · ${daysLabel(task.daysOfWeek)}", style = MaterialTheme.typography.bodySmall)

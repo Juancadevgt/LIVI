@@ -7,10 +7,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.livi.maintenance.LiviApp
 import com.livi.maintenance.actions.ActionType
-import com.livi.maintenance.actions.KnownPackages
 import com.livi.maintenance.data.TaskEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -19,11 +21,16 @@ fun AddTaskDialog(
     onDismiss: () -> Unit,
     onSave: (TaskEntity) -> Unit
 ) {
+    val context = LocalContext.current
+    val app = context.applicationContext as LiviApp
+
     var action by rememberSaveable { mutableStateOf(ActionType.CLEAR_CACHE) }
-    var pkg by rememberSaveable { mutableStateOf(KnownPackages.POWER_APPS) }
+    var pkg by rememberSaveable { mutableStateOf<String?>(null) }
+    var pkgLabel by rememberSaveable { mutableStateOf<String?>(null) }
     var hour by rememberSaveable { mutableIntStateOf(2) }
     var minute by rememberSaveable { mutableIntStateOf(0) }
     var daysMask by rememberSaveable { mutableIntStateOf(TaskEntity.EVERY_DAY) }
+    var showPicker by rememberSaveable { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium) {
@@ -35,17 +42,37 @@ fun AddTaskDialog(
                 ActionType.values().forEach { a ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = a == action, onClick = { action = a })
-                        Text(labelFor(a), modifier = Modifier.clickable { action = a })
+                        Text(
+                            labelFor(a),
+                            modifier = Modifier.clickable { action = a }
+                        )
                     }
                 }
 
                 if (action != ActionType.AIRPLANE_TOGGLE) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
                     Text("App objetivo", style = MaterialTheme.typography.labelLarge)
-                    KnownPackages.LABELS.forEach { (p, label) ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = p == pkg, onClick = { pkg = p })
-                            Text(label, modifier = Modifier.clickable { pkg = p })
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .clickable { showPicker = true }
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            if (pkg == null) {
+                                Text(
+                                    "Toca para elegir app...",
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Text(pkgLabel ?: pkg!!, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    pkg!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -91,29 +118,44 @@ fun AddTaskDialog(
                 }
 
                 Spacer(Modifier.height(16.dp))
+                val needsPkg = action != ActionType.AIRPLANE_TOGGLE
+                val canSave = !needsPkg || pkg != null
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = onDismiss) { Text("Cancelar") }
                     Spacer(Modifier.width(8.dp))
-                    Button(onClick = {
-                        onSave(
-                            TaskEntity(
-                                action = action,
-                                targetPackage = if (action == ActionType.AIRPLANE_TOGGLE) null else pkg,
-                                hour = hour,
-                                minute = minute,
-                                daysOfWeek = if (daysMask == 0) TaskEntity.EVERY_DAY else daysMask,
-                                enabled = true
+                    Button(
+                        enabled = canSave,
+                        onClick = {
+                            onSave(
+                                TaskEntity(
+                                    action = action,
+                                    targetPackage = if (action == ActionType.AIRPLANE_TOGGLE) null else pkg,
+                                    hour = hour,
+                                    minute = minute,
+                                    daysOfWeek = if (daysMask == 0) TaskEntity.EVERY_DAY else daysMask,
+                                    enabled = true
+                                )
                             )
-                        )
-                    }) { Text("Guardar") }
+                        }
+                    ) { Text("Guardar") }
                 }
             }
         }
+    }
+
+    if (showPicker) {
+        AppPickerDialog(
+            onDismiss = { showPicker = false },
+            onPick = { selected ->
+                pkg = selected.packageName
+                pkgLabel = selected.label
+                showPicker = false
+            }
+        )
     }
 }
 
 private fun labelFor(a: ActionType) = when (a) {
     ActionType.CLEAR_CACHE -> "Borrar caché"
-    ActionType.CLEAR_DATA -> "Borrar datos"
     ActionType.AIRPLANE_TOGGLE -> "Modo avión 10s"
 }

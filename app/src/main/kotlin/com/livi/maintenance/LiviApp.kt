@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.Build
 import androidx.core.content.getSystemService
 import com.livi.maintenance.data.AppDatabase
+import com.livi.maintenance.data.AppRepository
 import com.livi.maintenance.data.TaskRepository
 import com.livi.maintenance.scheduler.Scheduler
 
@@ -13,6 +14,7 @@ class LiviApp : Application() {
 
     val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
     val repository: TaskRepository by lazy { TaskRepository(database.taskDao()) }
+    val appRepository: AppRepository by lazy { AppRepository(this) }
     val scheduler: Scheduler by lazy { Scheduler(this) }
 
     override fun onCreate() {

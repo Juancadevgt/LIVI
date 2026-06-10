@@ -13,28 +13,20 @@ class ActionExecutor(private val context: Context) {
     suspend fun execute(action: ActionType, targetPackage: String?): Result {
         return when (action) {
             ActionType.CLEAR_CACHE -> openAppDetailsAndClear(
-                requireNotNull(targetPackage) { "CLEAR_CACHE requiere targetPackage" },
-                LiviAccessibilityService.Mode.CLEAR_CACHE
-            )
-            ActionType.CLEAR_DATA -> openAppDetailsAndClear(
-                requireNotNull(targetPackage) { "CLEAR_DATA requiere targetPackage" },
-                LiviAccessibilityService.Mode.CLEAR_DATA
+                requireNotNull(targetPackage) { "CLEAR_CACHE requiere targetPackage" }
             )
             ActionType.AIRPLANE_TOGGLE -> toggleAirplaneViaQuickSettings()
         }
     }
 
-    private suspend fun openAppDetailsAndClear(
-        targetPackage: String,
-        mode: LiviAccessibilityService.Mode
-    ): Result {
+    private suspend fun openAppDetailsAndClear(targetPackage: String): Result {
         if (!LiviAccessibilityService.isConnected()) {
             return Result.Failure("Servicio de Accesibilidad no activado")
         }
         if (!isPackageInstalled(targetPackage)) {
             return Result.Failure("Paquete no instalado: $targetPackage")
         }
-        LiviAccessibilityService.setMode(mode)
+        LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.CLEAR_CACHE)
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", targetPackage, null)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -58,24 +50,20 @@ class ActionExecutor(private val context: Context) {
             val initial = airplaneModeOn()
             Log.i(TAG, "===== toggleAirplane INICIO airplane_mode_on=$initial =====")
 
-            // Tap 1: cambiar al opuesto del estado inicial
             Log.i(TAG, "Tap 1: abriendo Quick Settings...")
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_ON)
             svc.openQuickSettings()
             delay(4500)
             LiviAccessibilityService.reset()
-            // Cerrar el panel explícitamente por si quedó abierto
             svc.goHome()
             delay(500)
             val afterTap1 = airplaneModeOn()
             Log.i(TAG, "Despues Tap 1: airplane_mode_on=$afterTap1 (esperado distinto de $initial)")
 
-            // Espera 10s
             Log.i(TAG, "Esperando 10 segundos antes del Tap 2...")
             delay(10_000)
             Log.i(TAG, "Estado tras 10s: airplane_mode_on=${airplaneModeOn()}")
 
-            // Tap 2: volver al estado original
             Log.i(TAG, "Tap 2: abriendo Quick Settings...")
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_OFF)
             svc.openQuickSettings()
