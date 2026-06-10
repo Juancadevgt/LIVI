@@ -13,13 +13,15 @@ import com.livi.maintenance.data.TaskEntity
 import java.util.concurrent.TimeUnit
 
 /**
- * Muestra notificaciones para tareas pendientes. Solo aviso visual — al tocar
- * abre LIVI, pero la ejecución real se dispara automáticamente al desbloquear
- * el celular (UnlockReceiver) o cuando vuelva a entrar al ciclo del Worker.
+ * Notificaciones de tareas pendientes:
+ *  - Primera vez (isRetry=false): solo aviso visual. La tarea se ejecuta sola
+ *    al próximo desbloqueo.
+ *  - Tras un Interrupted del usuario (isRetry=true): aviso + botón "Ejecutar ahora"
+ *    para que el usuario pueda reintentar manualmente sin esperar al desbloqueo.
  */
 object PendingTaskNotifier {
 
-    fun show(context: Context, task: TaskEntity) {
+    fun show(context: Context, task: TaskEntity, isRetry: Boolean = false) {
         val app = context.applicationContext as LiviApp
         val actionLabel = when (task.action) {
             ActionType.CLEAR_CACHE -> "Borrar caché"
@@ -32,8 +34,7 @@ object PendingTaskNotifier {
             formatElapsed(System.currentTimeMillis() - it)
         } ?: "recién"
 
-        // Al tocar la notificación, solo se abre LIVI (no ejecuta la tarea —
-        // eso ya lo hace UnlockReceiver al desbloquear).
+        // PendingIntent para abrir LIVI (toque normal de la notificación)
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -44,28 +45,53 @@ object PendingTaskNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val title = if (isRetry) "Reintentar tarea LIVI" else "Tarea LIVI pendiente"
         val bigText = buildString {
             append(subtitle)
             append("\n\n")
-            append("Programada hace ").append(elapsed).append(".\n")
-            append("Se ejecutará automáticamente cuando desbloquees el celular.")
+            if (isRetry) {
+                append("Cancelada hace ").append(elapsed).append(".\n")
+                append("Toca 'Ejecutar ahora' para reintentar manualmente, ")
+                append("o se ejecutará al próximo desbloqueo del celular.")
+            } else {
+                append("Programada hace ").append(elapsed).append(".\n")
+                append("Se ejecutará automáticamente cuando desbloquees el celular.")
+            }
         }
 
-        val notification = NotificationCompat.Builder(
+        val builder = NotificationCompat.Builder(
             context,
             context.getString(R.string.notification_channel_id)
         )
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("Tarea LIVI pendiente")
+            .setContentTitle(title)
             .setContentText("$subtitle · hace $elapsed")
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(openPendingIntent)
-            .build()
+
+        // Solo en reintento se agrega el botón "Ejecutar ahora"
+        if (isRetry) {
+            val executeIntent = Intent(context, PendingActionReceiver::class.java).apply {
+                action = PendingActionReceiver.ACTION_EXECUTE
+                putExtra(PendingActionReceiver.EXTRA_TASK_ID, task.id)
+            }
+            val executePendingIntent = PendingIntent.getBroadcast(
+                context,
+                task.id.toInt() + 200000,
+                executeIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            builder.addAction(
+                android.R.drawable.ic_media_play,
+                "Ejecutar ahora",
+                executePendingIntent
+            )
+        }
 
         try {
-            NotificationManagerCompat.from(context).notify(task.id.toInt(), notification)
+            NotificationManagerCompat.from(context).notify(task.id.toInt(), builder.build())
         } catch (_: SecurityException) {
             // Permiso POST_NOTIFICATIONS no otorgado
         }

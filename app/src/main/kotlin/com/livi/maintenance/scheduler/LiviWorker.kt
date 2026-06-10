@@ -38,10 +38,11 @@ class LiviWorker(
         // ¿Se puede ejecutar ahora? (pantalla activa + desbloqueado, o Device Owner)
         if (!force && !canExecuteOnCurrentScreenState(ctx, app)) {
             Log.i(TAG, "Celular bloqueado/dormido sin Device Owner — diferiendo tarea ${task.id}")
-            // Solo actualizar pendingExecution si no existía ya (preservar el primer momento)
+            // Preservar el timestamp original si ya estaba pendiente
             val pendingTs = task.pendingExecution ?: System.currentTimeMillis()
             app.repository.upsert(task.copy(pendingExecution = pendingTs))
-            PendingTaskNotifier.show(ctx, task.copy(pendingExecution = pendingTs))
+            // Primera notificación: solo aviso, sin botón
+            PendingTaskNotifier.show(ctx, task.copy(pendingExecution = pendingTs), isRetry = false)
             return Result.success()
         }
 
@@ -76,16 +77,17 @@ class LiviWorker(
 
             is ActionExecutor.Result.Interrupted -> {
                 Log.w(TAG, "Tarea ${task.id} INTERRUMPIDA por usuario: ${result.message}")
-                // Re-marcar como pendiente, mantener el timestamp original si existía
-                val pendingTs = task.pendingExecution ?: System.currentTimeMillis()
+                // Re-marcar como pendiente; el timestamp se actualiza para reflejar
+                // el momento del reintento (no la programación original)
+                val retryTs = System.currentTimeMillis()
                 app.repository.upsert(
                     task.copy(
-                        pendingExecution = pendingTs,
+                        pendingExecution = retryTs,
                         lastResult = "Cancelada — reintentar al desbloquear"
                     )
                 )
-                // Mostrar notificación nueva para que el usuario sepa que sigue pendiente
-                PendingTaskNotifier.show(ctx, task.copy(pendingExecution = pendingTs))
+                // Notificación de reintento: incluye botón "Ejecutar ahora"
+                PendingTaskNotifier.show(ctx, task.copy(pendingExecution = retryTs), isRetry = true)
             }
         }
         return Result.success()
