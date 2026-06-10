@@ -101,6 +101,14 @@ class LiviAccessibilityService : AccessibilityService() {
                 if (firstSeenDisabledAt == 0L) {
                     firstSeenDisabledAt = now
                     Log.d(TAG, "Botón deshabilitado por primera vez — esperando cálculo de Android")
+                    // Programar un re-check forzado tras el timeout. Si la pantalla queda
+                    // estática (no genera más eventos), igual revisamos manualmente.
+                    handler.postDelayed({
+                        if (mode.get() == Mode.CLEAR_CACHE) {
+                            Log.d(TAG, "Re-check forzado de Borrar caché tras timeout")
+                            rootInActiveWindow?.let { handleClearCache(it) }
+                        }
+                    }, CACHE_EMPTY_TIMEOUT_MS + 500)
                     return
                 }
                 val elapsed = now - firstSeenDisabledAt
