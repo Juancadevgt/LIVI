@@ -154,17 +154,41 @@ class LiviAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastTapAt < 2500) return
 
-        val tile = findNodeByAnyText(root, AIRPLANE_LABELS)
-        if (tile == null) {
-            Log.w(TAG, "Tile de modo avión no encontrado")
+        // Estrategia múltiple para encontrar el switch del modo avión:
+        // 1. Primero buscar por className Switch (más fiable en pantalla AIRPLANE_MODE_SETTINGS)
+        // 2. Luego por texto/contentDescription "Modo avión"
+        var target = findFirstNodeByClass(root, "android.widget.Switch")
+            ?: findFirstNodeByClass(root, "androidx.appcompat.widget.SwitchCompat")
+            ?: findFirstNodeByClass(root, "android.widget.CompoundButton")
+        if (target == null) {
+            target = findNodeByAnyText(root, AIRPLANE_LABELS)
+        }
+        if (target == null) {
+            Log.w(TAG, "Switch/tile de modo avión no encontrado en esta pantalla")
             return
         }
-        Log.i(TAG, "Tile modo avión: text='${tile.text}' desc='${tile.contentDescription}'")
-        performClickOrAncestor(tile)
+        Log.i(TAG, "Target modo avión: text='${target.text}' desc='${target.contentDescription}' " +
+            "class=${target.className} clickable=${target.isClickable} enabled=${target.isEnabled}")
+        performClickOrAncestor(target)
         lastTapAt = now
         taskSucceeded.set(true)
-        Log.i(TAG, "Tap ejecutado sobre tile modo avión — MARKED SUCCESS")
+        Log.i(TAG, "Tap ejecutado sobre switch/tile modo avión — MARKED SUCCESS")
         mode.set(Mode.IDLE)
+    }
+
+    /**
+     * Búsqueda recursiva por className. Usado para encontrar el Switch del
+     * modo avión en la pantalla Settings.AIRPLANE_MODE_SETTINGS, donde el
+     * texto puede estar separado del switch en widgets distintos.
+     */
+    private fun findFirstNodeByClass(node: AccessibilityNodeInfo?, className: String): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.className?.toString() == className) return node
+        for (i in 0 until node.childCount) {
+            val found = findFirstNodeByClass(node.getChild(i), className)
+            if (found != null) return found
+        }
+        return null
     }
 
     /**
