@@ -11,13 +11,13 @@ import com.livi.maintenance.LiviApp
 import com.livi.maintenance.actions.ActionExecutor
 
 /**
- * Worker que ejecuta una tarea programada. Si el celular está bloqueado
- * (pantalla apagada o keyguard activo) y LIVI no es Device Owner, NO ejecuta
- * la acción ahora — la marca como pendiente y muestra una notificación.
+ * Worker que ejecuta una tarea programada.
  *
- * Cuando el usuario desbloquea el celular (UnlockReceiver) o toca la
- * notificación (PendingActionReceiver), la tarea se ejecuta con flag
- * force=true que saltea esta verificación.
+ * Si el celular está bloqueado y LIVI no es Device Owner → difiere (no ejecuta).
+ * Si se ejecuta pero el usuario cancela (Home/Back) → re-marca pendiente.
+ * Si se ejecuta y completa → marca OK.
+ *
+ * El ciclo de reintentos termina cuando el resultado es Success o Failure técnico.
  */
 class LiviWorker(
     appContext: Context,
@@ -34,38 +34,67 @@ class LiviWorker(
         if (!task.enabled) return Result.success()
 
         val ctx = applicationContext
-        val canExecuteNow = force || canExecuteOnCurrentScreenState(ctx, app)
 
-        if (!canExecuteNow) {
-            Log.i(TAG, "Celular bloqueado/dormido y sin Device Owner — diferiendo tarea ${task.id}")
-            app.repository.upsert(task.copy(pendingExecution = System.currentTimeMillis()))
-            PendingTaskNotifier.show(ctx, task)
+        // ¿Se puede ejecutar ahora? (pantalla activa + desbloqueado, o Device Owner)
+        if (!force && !canExecuteOnCurrentScreenState(ctx, app)) {
+            Log.i(TAG, "Celular bloqueado/dormido sin Device Owner — diferiendo tarea ${task.id}")
+            // Solo actualizar pendingExecution si no existía ya (preservar el primer momento)
+            val pendingTs = task.pendingExecution ?: System.currentTimeMillis()
+            app.repository.upsert(task.copy(pendingExecution = pendingTs))
+            PendingTaskNotifier.show(ctx, task.copy(pendingExecution = pendingTs))
             return Result.success()
         }
 
-        // Ejecutar normalmente
+        // Ejecutar la acción
         val executor = ActionExecutor(ctx)
         val result = executor.execute(task.action, task.targetPackage)
-        val resultText = when (result) {
-            is ActionExecutor.Result.Success -> "OK"
-            is ActionExecutor.Result.Failure -> "ERR: ${result.message}"
+
+        when (result) {
+            is ActionExecutor.Result.Success -> {
+                Log.i(TAG, "Tarea ${task.id} OK")
+                app.repository.upsert(
+                    task.copy(
+                        lastRunAt = System.currentTimeMillis(),
+                        lastResult = "OK",
+                        pendingExecution = null
+                    )
+                )
+                PendingTaskNotifier.cancel(ctx, task.id)
+            }
+
+            is ActionExecutor.Result.Failure -> {
+                Log.w(TAG, "Tarea ${task.id} FAILURE: ${result.message}")
+                app.repository.upsert(
+                    task.copy(
+                        lastRunAt = System.currentTimeMillis(),
+                        lastResult = "ERR: ${result.message}",
+                        pendingExecution = null
+                    )
+                )
+                PendingTaskNotifier.cancel(ctx, task.id)
+            }
+
+            is ActionExecutor.Result.Interrupted -> {
+                Log.w(TAG, "Tarea ${task.id} INTERRUMPIDA por usuario: ${result.message}")
+                // Re-marcar como pendiente, mantener el timestamp original si existía
+                val pendingTs = task.pendingExecution ?: System.currentTimeMillis()
+                app.repository.upsert(
+                    task.copy(
+                        pendingExecution = pendingTs,
+                        lastResult = "Cancelada — reintentar al desbloquear"
+                    )
+                )
+                // Mostrar notificación nueva para que el usuario sepa que sigue pendiente
+                PendingTaskNotifier.show(ctx, task.copy(pendingExecution = pendingTs))
+            }
         }
-        app.repository.upsert(
-            task.copy(
-                lastRunAt = System.currentTimeMillis(),
-                lastResult = resultText,
-                pendingExecution = null
-            )
-        )
-        // Por si había notificación pendiente, limpiarla
-        PendingTaskNotifier.cancel(ctx, task.id)
         return Result.success()
     }
 
     /**
-     * Devuelve true si LIVI puede ejecutar la acción ahora mismo:
-     *  - Si es Device Owner: SIEMPRE puede (incluso bloqueado lo maneja DPM)
-     *  - Si NO es Device Owner: requiere pantalla encendida y desbloqueado
+     * true si LIVI puede ejecutar la acción ahora mismo:
+     *  - Device Owner: SIEMPRE
+     *  - Resto: requiere pantalla encendida Y desbloqueado
      */
     private fun canExecuteOnCurrentScreenState(ctx: Context, app: LiviApp): Boolean {
         if (app.policyManager.isDeviceOwner()) return true

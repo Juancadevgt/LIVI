@@ -6,14 +6,16 @@ import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Servicio de accesibilidad que automatiza UI de Ajustes y Quick Settings:
- *  - CLEAR_CACHE: navega a la info de la app y pulsa "Borrar caché"
- *  - AIRPLANE_TOGGLE_ON / AIRPLANE_TOGGLE_OFF: abre Quick Settings y toca
- *    el botón "Modo avión" (única forma confiable de apagar radios reales
- *    en Android moderno sin Device Owner)
+ * Servicio de accesibilidad que automatiza UI de Ajustes y Quick Settings.
+ *
+ * Anti-cancelación: `taskSucceeded` se marca a true SOLO cuando el tap real
+ * se ejecuta. Si el usuario presiona Home/Back antes de que LIVI complete,
+ * el timeout llega sin que la flag se haya marcado y ActionExecutor devuelve
+ * Result.Interrupted (que dispara re-notificación en LiviWorker).
  */
 class LiviAccessibilityService : AccessibilityService() {
 
@@ -39,9 +41,6 @@ class LiviAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val m = mode.get()
         if (m == Mode.IDLE) return
-        // Delay ligeramente alto para que la UI termine de renderizar antes de buscar nodos.
-        // Especialmente importante en pantallas como "Almacenamiento" donde Android calcula
-        // el tamaño de la caché antes de habilitar el botón "Borrar caché".
         handler.postDelayed({ tryHandle(m) }, 700)
     }
 
@@ -54,55 +53,39 @@ class LiviAccessibilityService : AccessibilityService() {
         }
     }
 
-    /**
-     * Borrar caché. Pasivamente espera la siguiente vista útil:
-     *  - Si encuentra el botón "Borrar caché" habilitado → tap y termina.
-     *  - Si lo encuentra deshabilitado (Android aún calculando tamaño) → espera otro evento.
-     *  - Si no, busca "Almacenamiento" para navegar.
-     *
-     * No marca IDLE hasta que el tap se ejecuta exitosamente. El timeout global en
-     * ActionExecutor (12s) garantiza que se libere si la UI no coopera.
-     */
     private fun handleClearCache(root: AccessibilityNodeInfo) {
         val now = System.currentTimeMillis()
         if (now - lastTapAt < 1200) return
 
-        // 1) Buscar el botón "Borrar caché"
         val clearCache = findClickableByAnyText(root, CACHE_LABELS)
         if (clearCache != null) {
             val ancestor = findClickableAncestor(clearCache)
             val effectiveEnabled = ancestor?.isEnabled == true || clearCache.isEnabled
-            Log.i(TAG, "Borrar caché encontrado: text='${clearCache.text}' " +
-                "enabled=${clearCache.isEnabled} ancestorEnabled=${ancestor?.isEnabled}")
+            Log.i(TAG, "Borrar caché encontrado: text='${clearCache.text}' enabled=$effectiveEnabled")
 
             if (!effectiveEnabled) {
-                Log.d(TAG, "Botón deshabilitado, esperando que Android termine de calcular tamaño")
-                return  // no marca IDLE — el siguiente evento intentará otra vez
+                Log.d(TAG, "Botón deshabilitado, esperando")
+                return
             }
             performClickOrAncestor(clearCache)
             lastTapAt = now
-            Log.i(TAG, "Tap ejecutado sobre Borrar caché")
+            taskSucceeded.set(true)
+            Log.i(TAG, "Tap ejecutado sobre Borrar caché — MARKED SUCCESS")
             mode.set(Mode.IDLE)
             finishWithBack()
             return
         }
 
-        // 2) No vemos "Borrar caché": navegamos a Almacenamiento
         val storageEntry = findClickableByAnyText(root, STORAGE_LABELS)
         if (storageEntry != null) {
             Log.i(TAG, "Tap en Almacenamiento para entrar")
             performClickOrAncestor(storageEntry)
             lastTapAt = now
         } else {
-            Log.d(TAG, "Ni Borrar caché ni Almacenamiento visibles aún — esperando")
+            Log.d(TAG, "Ni Borrar caché ni Almacenamiento visibles aún")
         }
     }
 
-    /**
-     * Devuelve el ancestro clickeable más cercano, o null si ningún ancestro lo es.
-     * Útil para chequear el `isEnabled` real porque en Compose/Material el botón
-     * clickeable es el Layout padre, no el TextView del label.
-     */
     private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         var n: AccessibilityNodeInfo? = node
         var hops = 0
@@ -114,24 +97,20 @@ class LiviAccessibilityService : AccessibilityService() {
         return null
     }
 
-    /**
-     * Busca el tile "Modo avión" en Quick Settings y hace tap.
-     * Anti-doble-tap: si ya tocamos hace menos de 2.5s, ignoramos eventos.
-     */
     private fun handleAirplaneToggle(root: AccessibilityNodeInfo) {
         val now = System.currentTimeMillis()
         if (now - lastTapAt < 2500) return
 
         val tile = findNodeByAnyText(root, AIRPLANE_LABELS)
         if (tile == null) {
-            Log.w(TAG, "Tile no encontrado en esta ventana — esperando próximo evento")
+            Log.w(TAG, "Tile de modo avión no encontrado")
             return
         }
-        Log.i(TAG, "Tile candidate: text='${tile.text}' desc='${tile.contentDescription}' " +
-            "class=${tile.className} clickable=${tile.isClickable}")
+        Log.i(TAG, "Tile modo avión: text='${tile.text}' desc='${tile.contentDescription}'")
         performClickOrAncestor(tile)
         lastTapAt = now
-        Log.i(TAG, "Tap ejecutado sobre tile de modo avión")
+        taskSucceeded.set(true)
+        Log.i(TAG, "Tap ejecutado sobre tile modo avión — MARKED SUCCESS")
         mode.set(Mode.IDLE)
     }
 
@@ -154,9 +133,7 @@ class LiviAccessibilityService : AccessibilityService() {
     ): AccessibilityNodeInfo? {
         for (text in candidates) {
             val list = root.findAccessibilityNodeInfosByText(text) ?: continue
-            for (node in list) {
-                return node
-            }
+            for (node in list) return node
         }
         return findByContentDescription(root, candidates)
     }
@@ -206,35 +183,30 @@ class LiviAccessibilityService : AccessibilityService() {
         private val instance = AtomicReference<LiviAccessibilityService?>(null)
         private val mode = AtomicReference(Mode.IDLE)
 
+        /** Flag para detectar interrupción del usuario (Home/Back antes de terminar) */
+        private val taskSucceeded = AtomicBoolean(false)
+
         private val AIRPLANE_LABELS = listOf(
-            "Modo avión",
-            "Modo de avión",
-            "Modo vuelo",
-            "Avión",
-            "Airplane mode",
-            "Flight mode",
-            "Aeroplane mode"
+            "Modo avión", "Modo de avión", "Modo vuelo", "Avión",
+            "Airplane mode", "Flight mode", "Aeroplane mode"
         )
-
         private val STORAGE_LABELS = listOf(
-            "Almacenamiento y caché",
-            "Almacenamiento",
-            "Storage & cache",
-            "Storage"
+            "Almacenamiento y caché", "Almacenamiento",
+            "Storage & cache", "Storage"
         )
-
         private val CACHE_LABELS = listOf(
-            "Borrar caché",
-            "Borrar memoria caché",
-            "Limpiar caché",
-            "Vaciar caché",
-            "Eliminar caché",
-            "Clear cache"
+            "Borrar caché", "Borrar memoria caché", "Limpiar caché",
+            "Vaciar caché", "Eliminar caché", "Clear cache"
         )
 
         fun isConnected(): Boolean = instance.get() != null
         fun service(): LiviAccessibilityService? = instance.get()
         fun setMode(m: Mode) { mode.set(m) }
         fun reset() { mode.set(Mode.IDLE) }
+
+        /** Resetea el flag de éxito antes de iniciar una nueva tarea */
+        fun resetSuccess() { taskSucceeded.set(false) }
+        /** Devuelve true si el tap real se ejecutó durante la última tarea */
+        fun wasSuccessful(): Boolean = taskSucceeded.get()
     }
 }

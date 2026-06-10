@@ -9,23 +9,14 @@ import com.livi.maintenance.accessibility.LiviAccessibilityService
 import com.livi.maintenance.privileged.PolicyManager
 import kotlinx.coroutines.delay
 
-/**
- * Coordina la ejecución de las acciones. Tiene dos caminos:
- *
- * 1. **Device Owner** (cuando IT enrola via Intune): usa DevicePolicyManager
- *    para operaciones privilegiadas — funciona con celular bloqueado.
- *
- * 2. **Accessibility** (celular personal, sin Device Owner): automatiza la UI
- *    de Ajustes y Quick Settings — requiere pantalla encendida.
- *
- * `execute()` detecta automáticamente cuál usar.
- */
 class ActionExecutor(
     private val context: Context,
     private val policyManager: PolicyManager = PolicyManager(context)
 ) {
 
     suspend fun execute(action: ActionType, targetPackage: String?): Result {
+        // Resetear flag de éxito antes de cualquier intento
+        LiviAccessibilityService.resetSuccess()
         return when (action) {
             ActionType.CLEAR_CACHE -> clearCache(targetPackage)
             ActionType.AIRPLANE_TOGGLE -> toggleAirplane()
@@ -36,10 +27,10 @@ class ActionExecutor(
 
     private suspend fun toggleAirplane(): Result {
         return if (policyManager.isDeviceOwner()) {
-            Log.i(TAG, "toggleAirplane: usando ruta Device Owner")
+            Log.i(TAG, "toggleAirplane: ruta Device Owner")
             toggleAirplaneAsDeviceOwner()
         } else {
-            Log.i(TAG, "toggleAirplane: usando ruta Accessibility (no Device Owner)")
+            Log.i(TAG, "toggleAirplane: ruta Accessibility")
             toggleAirplaneViaQuickSettings()
         }
     }
@@ -68,26 +59,38 @@ class ActionExecutor(
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_ON)
             svc.openQuickSettings()
             delay(4500)
+            val tap1Success = LiviAccessibilityService.wasSuccessful()
             LiviAccessibilityService.reset()
             svc.goHome()
             delay(500)
             val afterTap1 = airplaneModeOn()
-            Log.i(TAG, "Despues Tap 1: airplane_mode_on=$afterTap1 (esperado distinto de $initial)")
+            Log.i(TAG, "Despues Tap 1: airplane_mode_on=$afterTap1, success=$tap1Success")
+
+            if (!tap1Success) {
+                Log.w(TAG, "Tap 1 NO se ejecutó — usuario probablemente canceló")
+                return Result.Interrupted("Cancelado antes del primer tap")
+            }
 
             Log.i(TAG, "Esperando 10 segundos antes del Tap 2...")
             delay(10_000)
 
+            // Resetear flag para detectar el segundo tap
+            LiviAccessibilityService.resetSuccess()
             Log.i(TAG, "Tap 2: abriendo Quick Settings...")
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_OFF)
             svc.openQuickSettings()
             delay(4500)
+            val tap2Success = LiviAccessibilityService.wasSuccessful()
             LiviAccessibilityService.reset()
             svc.goHome()
             val afterTap2 = airplaneModeOn()
-            Log.i(TAG, "===== toggleAirplane FIN airplane_mode_on=$afterTap2 (esperado $initial) =====")
+            Log.i(TAG, "===== toggleAirplane FIN airplane_mode_on=$afterTap2 (esperado $initial), tap2Success=$tap2Success =====")
 
-            if (afterTap2 == initial) Result.Success
-            else Result.Failure("Estado final airplane=$afterTap2 != inicial $initial")
+            when {
+                !tap2Success -> Result.Interrupted("Cancelado antes del segundo tap (modo avión quedó activo)")
+                afterTap2 != initial -> Result.Interrupted("Estado final airplane=$afterTap2 != inicial $initial")
+                else -> Result.Success
+            }
         } catch (t: Throwable) {
             Log.e(TAG, "Error en toggle modo avión", t)
             LiviAccessibilityService.reset()
@@ -106,13 +109,11 @@ class ActionExecutor(
             return Result.Failure("Servicio de Accesibilidad no activado")
         }
 
-        // Si somos Device Owner, desactivamos el keyguard temporalmente para que
-        // la automatización funcione con pantalla bloqueada.
         val deviceOwner = policyManager.isDeviceOwner()
         var keyguardWasDisabled = false
         if (deviceOwner) {
             keyguardWasDisabled = policyManager.setKeyguardDisabled(true)
-            Log.i(TAG, "clearCache: Device Owner activo, keyguard desactivado=$keyguardWasDisabled")
+            Log.i(TAG, "clearCache: Device Owner, keyguard desactivado=$keyguardWasDisabled")
         }
 
         try {
@@ -122,11 +123,17 @@ class ActionExecutor(
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             context.startActivity(intent)
-            // Margen amplio: Android puede tardar varios segundos en calcular el tamaño
-            // de la caché y habilitar el botón "Borrar caché".
             delay(12_000)
+            val success = LiviAccessibilityService.wasSuccessful()
             LiviAccessibilityService.reset()
-            return Result.Success
+
+            return if (success) {
+                Log.i(TAG, "clearCache: tap exitoso")
+                Result.Success
+            } else {
+                Log.w(TAG, "clearCache: timeout sin tap exitoso — usuario probablemente canceló")
+                Result.Interrupted("Cancelado por el usuario antes de tocar Borrar caché")
+            }
         } finally {
             if (keyguardWasDisabled) {
                 policyManager.setKeyguardDisabled(false)
@@ -149,8 +156,17 @@ class ActionExecutor(
     }
 
     sealed class Result {
+        /** La tarea se ejecutó exitosamente. */
         data object Success : Result()
+
+        /** Error técnico real (paquete no instalado, accesibilidad no activa, etc.). NO se reintenta. */
         data class Failure(val message: String) : Result()
+
+        /**
+         * El usuario canceló durante la ejecución (presionó Home/Back o cambió de app).
+         * Se vuelve a marcar como pendiente para reintentar al próximo desbloqueo.
+         */
+        data class Interrupted(val message: String) : Result()
     }
 
     companion object { private const val TAG = "LiviActionExecutor" }
