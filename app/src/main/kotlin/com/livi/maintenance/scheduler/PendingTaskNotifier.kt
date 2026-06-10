@@ -50,12 +50,11 @@ object PendingTaskNotifier {
             append(subtitle)
             append("\n\n")
             if (isRetry) {
-                append("Cancelada hace ").append(elapsed).append(".\n")
-                append("Toca 'Ejecutar ahora' para reintentar manualmente, ")
-                append("o se ejecutará al próximo desbloqueo del celular.")
+                append("La última ejecución se canceló hace ").append(elapsed).append(".\n")
+                append("Toca esta notificación o el botón 'Ejecutar ahora' para reintentar.")
             } else {
                 append("Programada hace ").append(elapsed).append(".\n")
-                append("Se ejecutará automáticamente cuando desbloquees el celular.")
+                append("Toca esta notificación para ejecutar la tarea ahora.")
             }
         }
 
@@ -65,7 +64,7 @@ object PendingTaskNotifier {
         )
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title)
-            .setContentText("$subtitle · hace $elapsed")
+            .setContentText("Toca para ejecutar · hace $elapsed")
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
