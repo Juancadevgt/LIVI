@@ -25,4 +25,8 @@
     <string name="notification_channel_id">livi_worker</string>
     <string name="notification_channel_name">Mantenimiento LIVI</string>
     <string name="notification_running">Ejecutando tarea de mantenimiento…</string>
+
+    <string name="device_admin_label">LIVI Administrador</string>
+    <string name="device_admin_description">Permite a LIVI ejecutar tareas programadas con el celular bloqueado. Solo se activa cuando IT enrola el dispositivo.</string>
+    <string name="device_owner_status">Device Owner</string>
 </resources>

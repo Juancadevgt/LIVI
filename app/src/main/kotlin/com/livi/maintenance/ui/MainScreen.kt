@@ -75,10 +75,17 @@ fun MainScreen(viewModel: MainViewModel) {
 
 @Composable
 private fun PermissionsCard(context: Context) {
+    val app = context.applicationContext as LiviApp
     val a11yConnected by produceState(initialValue = false) {
         while (true) {
             value = LiviAccessibilityService.isConnected()
             kotlinx.coroutines.delay(1500)
+        }
+    }
+    val isDeviceOwner by produceState(initialValue = false) {
+        while (true) {
+            value = app.policyManager.isDeviceOwner()
+            kotlinx.coroutines.delay(3000)
         }
     }
     Card(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
@@ -97,6 +104,22 @@ private fun PermissionsCard(context: Context) {
                     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
+            }
+            if (isDeviceOwner) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.device_owner_status),
+                        modifier = Modifier.weight(1f)
+                    )
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Activo - funciona bloqueado") }
+                    )
+                }
             }
         }
     }

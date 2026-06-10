@@ -6,43 +6,57 @@ import android.net.Uri
 import android.provider.Settings
 import android.util.Log
 import com.livi.maintenance.accessibility.LiviAccessibilityService
+import com.livi.maintenance.privileged.PolicyManager
 import kotlinx.coroutines.delay
 
-class ActionExecutor(private val context: Context) {
+/**
+ * Coordina la ejecución de las acciones. Tiene dos caminos:
+ *
+ * 1. **Device Owner** (cuando IT enrola via Intune): usa DevicePolicyManager
+ *    para operaciones privilegiadas — funciona con celular bloqueado.
+ *
+ * 2. **Accessibility** (celular personal, sin Device Owner): automatiza la UI
+ *    de Ajustes y Quick Settings — requiere pantalla encendida.
+ *
+ * `execute()` detecta automáticamente cuál usar.
+ */
+class ActionExecutor(
+    private val context: Context,
+    private val policyManager: PolicyManager = PolicyManager(context)
+) {
 
     suspend fun execute(action: ActionType, targetPackage: String?): Result {
         return when (action) {
-            ActionType.CLEAR_CACHE -> openAppDetailsAndClear(
-                requireNotNull(targetPackage) { "CLEAR_CACHE requiere targetPackage" }
-            )
-            ActionType.AIRPLANE_TOGGLE -> toggleAirplaneViaQuickSettings()
+            ActionType.CLEAR_CACHE -> clearCache(targetPackage)
+            ActionType.AIRPLANE_TOGGLE -> toggleAirplane()
         }
     }
 
-    private suspend fun openAppDetailsAndClear(targetPackage: String): Result {
-        if (!LiviAccessibilityService.isConnected()) {
-            return Result.Failure("Servicio de Accesibilidad no activado")
+    // -------- Modo avión --------
+
+    private suspend fun toggleAirplane(): Result {
+        return if (policyManager.isDeviceOwner()) {
+            Log.i(TAG, "toggleAirplane: usando ruta Device Owner")
+            toggleAirplaneAsDeviceOwner()
+        } else {
+            Log.i(TAG, "toggleAirplane: usando ruta Accessibility (no Device Owner)")
+            toggleAirplaneViaQuickSettings()
         }
-        if (!isPackageInstalled(targetPackage)) {
-            return Result.Failure("Paquete no instalado: $targetPackage")
-        }
-        LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.CLEAR_CACHE)
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-            data = Uri.fromParts("package", targetPackage, null)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        context.startActivity(intent)
-        delay(7000)
-        LiviAccessibilityService.reset()
-        return Result.Success
     }
 
-    /**
-     * En Android 14+ sin Device Owner ni root, escribir Settings.Global.AIRPLANE_MODE_ON
-     * cambia el icono pero NO apaga las radios — el sistema ignora el cambio. La única
-     * forma confiable es abrir el panel de Quick Settings y simular el tap del usuario
-     * sobre el tile "Modo avión", que el sistema acepta como acción humana.
-     */
+    private suspend fun toggleAirplaneAsDeviceOwner(): Result {
+        return try {
+            val initialOn = airplaneModeOn() == 1
+            policyManager.setAirplaneMode(!initialOn)
+            delay(10_000)
+            policyManager.setAirplaneMode(initialOn)
+            Result.Success
+        } catch (t: Throwable) {
+            Log.e(TAG, "toggleAirplaneAsDeviceOwner falló", t)
+            Result.Failure(t.message ?: "Error Device Owner")
+        }
+    }
+
     private suspend fun toggleAirplaneViaQuickSettings(): Result {
         val svc = LiviAccessibilityService.service()
             ?: return Result.Failure("Servicio de Accesibilidad no activado")
@@ -62,7 +76,6 @@ class ActionExecutor(private val context: Context) {
 
             Log.i(TAG, "Esperando 10 segundos antes del Tap 2...")
             delay(10_000)
-            Log.i(TAG, "Estado tras 10s: airplane_mode_on=${airplaneModeOn()}")
 
             Log.i(TAG, "Tap 2: abriendo Quick Settings...")
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_OFF)
@@ -81,6 +94,46 @@ class ActionExecutor(private val context: Context) {
             Result.Failure(t.message ?: "Error desconocido")
         }
     }
+
+    // -------- Borrar caché --------
+
+    private suspend fun clearCache(targetPackage: String?): Result {
+        val pkg = requireNotNull(targetPackage) { "CLEAR_CACHE requiere targetPackage" }
+        if (!isPackageInstalled(pkg)) {
+            return Result.Failure("Paquete no instalado: $pkg")
+        }
+        if (!LiviAccessibilityService.isConnected()) {
+            return Result.Failure("Servicio de Accesibilidad no activado")
+        }
+
+        // Si somos Device Owner, desactivamos el keyguard temporalmente para que
+        // la automatización funcione con pantalla bloqueada.
+        val deviceOwner = policyManager.isDeviceOwner()
+        var keyguardWasDisabled = false
+        if (deviceOwner) {
+            keyguardWasDisabled = policyManager.setKeyguardDisabled(true)
+            Log.i(TAG, "clearCache: Device Owner activo, keyguard desactivado=$keyguardWasDisabled")
+        }
+
+        try {
+            LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.CLEAR_CACHE)
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", pkg, null)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            delay(7000)
+            LiviAccessibilityService.reset()
+            return Result.Success
+        } finally {
+            if (keyguardWasDisabled) {
+                policyManager.setKeyguardDisabled(false)
+                Log.i(TAG, "clearCache: keyguard restaurado")
+            }
+        }
+    }
+
+    // -------- helpers --------
 
     private fun airplaneModeOn(): Int =
         try { Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, -1) }
