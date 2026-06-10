@@ -122,7 +122,9 @@ class ActionExecutor(
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             context.startActivity(intent)
-            delay(7000)
+            // Margen amplio: Android puede tardar varios segundos en calcular el tamaño
+            // de la caché y habilitar el botón "Borrar caché".
+            delay(12_000)
             LiviAccessibilityService.reset()
             return Result.Success
         } finally {

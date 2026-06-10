@@ -39,7 +39,10 @@ class LiviAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val m = mode.get()
         if (m == Mode.IDLE) return
-        handler.postDelayed({ tryHandle(m) }, 350)
+        // Delay ligeramente alto para que la UI termine de renderizar antes de buscar nodos.
+        // Especialmente importante en pantallas como "Almacenamiento" donde Android calcula
+        // el tamaño de la caché antes de habilitar el botón "Borrar caché".
+        handler.postDelayed({ tryHandle(m) }, 700)
     }
 
     private fun tryHandle(m: Mode) {
@@ -52,28 +55,29 @@ class LiviAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Estrategia: primero busca el botón "Borrar caché" (si ya estamos en la pantalla
-     * de Almacenamiento). Solo si no lo encuentra, busca "Almacenamiento" para
-     * navegar a esa pantalla.
+     * Borrar caché. Pasivamente espera la siguiente vista útil:
+     *  - Si encuentra el botón "Borrar caché" habilitado → tap y termina.
+     *  - Si lo encuentra deshabilitado (Android aún calculando tamaño) → espera otro evento.
+     *  - Si no, busca "Almacenamiento" para navegar.
      *
-     * Por qué este orden: en Samsung Android 15, el texto "Almacenamiento" también
-     * existe como TÍTULO en la pantalla destino, lo que causaba que mi código se
-     * quedara intentando tocar el título en bucle.
+     * No marca IDLE hasta que el tap se ejecuta exitosamente. El timeout global en
+     * ActionExecutor (12s) garantiza que se libere si la UI no coopera.
      */
     private fun handleClearCache(root: AccessibilityNodeInfo) {
         val now = System.currentTimeMillis()
-        if (now - lastTapAt < 1500) return
+        if (now - lastTapAt < 1200) return
 
-        // 1) ¿Ya estamos en Almacenamiento? Si vemos "Borrar caché", tap directo
+        // 1) Buscar el botón "Borrar caché"
         val clearCache = findClickableByAnyText(root, CACHE_LABELS)
         if (clearCache != null) {
+            val ancestor = findClickableAncestor(clearCache)
+            val effectiveEnabled = ancestor?.isEnabled == true || clearCache.isEnabled
             Log.i(TAG, "Borrar caché encontrado: text='${clearCache.text}' " +
-                "desc='${clearCache.contentDescription}' enabled=${clearCache.isEnabled}")
-            if (!clearCache.isEnabled) {
-                Log.w(TAG, "Botón Borrar caché está deshabilitado (probablemente caché=0). Cerrando.")
-                mode.set(Mode.IDLE)
-                finishWithBack()
-                return
+                "enabled=${clearCache.isEnabled} ancestorEnabled=${ancestor?.isEnabled}")
+
+            if (!effectiveEnabled) {
+                Log.d(TAG, "Botón deshabilitado, esperando que Android termine de calcular tamaño")
+                return  // no marca IDLE — el siguiente evento intentará otra vez
             }
             performClickOrAncestor(clearCache)
             lastTapAt = now
@@ -83,15 +87,31 @@ class LiviAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 2) Si no, estamos en Info de la app: navegar a Almacenamiento
+        // 2) No vemos "Borrar caché": navegamos a Almacenamiento
         val storageEntry = findClickableByAnyText(root, STORAGE_LABELS)
         if (storageEntry != null) {
             Log.i(TAG, "Tap en Almacenamiento para entrar")
             performClickOrAncestor(storageEntry)
             lastTapAt = now
         } else {
-            Log.w(TAG, "No se encontró ni Borrar caché ni Almacenamiento en esta vista")
+            Log.d(TAG, "Ni Borrar caché ni Almacenamiento visibles aún — esperando")
         }
+    }
+
+    /**
+     * Devuelve el ancestro clickeable más cercano, o null si ningún ancestro lo es.
+     * Útil para chequear el `isEnabled` real porque en Compose/Material el botón
+     * clickeable es el Layout padre, no el TextView del label.
+     */
+    private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var n: AccessibilityNodeInfo? = node
+        var hops = 0
+        while (n != null && hops < 5) {
+            if (n.isClickable) return n
+            n = n.parent
+            hops++
+        }
+        return null
     }
 
     /**
