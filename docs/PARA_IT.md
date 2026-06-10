@@ -127,6 +127,22 @@ Más detalles en `docs/DEVICE_OWNER.md` del repo.
 
 ---
 
+## 6.5. Roadmap si IT necesita más control
+
+LIVI actual permite que el usuario configure sus propias tareas (caché de qué app,
+a qué hora, etc.). Si IT prefiere **centralizar la configuración** y que los
+usuarios solo reciban las tareas predefinidas (sin poder modificarlas), se puede
+integrar **Managed Configuration de Android Enterprise**:
+
+- IT define las tareas en una política de configuración de aplicaciones en Intune
+- LIVI las lee al iniciar y al recibir cambios
+- La UI del usuario pasa a modo "solo lectura"
+- Los cambios desde Intune se propagan a todos los celulares del grupo
+
+Esto es una **adición opcional** que se implementa en una próxima versión si
+IT la solicita. Estimación: ~1 día de desarrollo. Coordinar con el desarrollador
+(juancadev@gmail.com) cuando se necesite.
+
 ## 7. Soporte y mantenimiento
 
 - **Desarrollador**: Juan C. Dorantes (juancadevgt@gmail.com)
