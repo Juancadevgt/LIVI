@@ -24,6 +24,7 @@ object PendingTaskNotifier {
         val actionLabel = when (task.action) {
             ActionType.CLEAR_CACHE -> "Borrar caché"
             ActionType.AIRPLANE_TOGGLE -> "Modo avión 10s"
+            ActionType.REBOOT -> "Reiniciar celular"
         }
         val appLabel = task.targetPackage?.let { app.appRepository.getAppLabel(it) }
         val subtitle = if (!appLabel.isNullOrBlank()) "$actionLabel · $appLabel" else actionLabel

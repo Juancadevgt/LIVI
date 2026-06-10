@@ -12,6 +12,7 @@
     <string name="task_clear_cache">Borrar caché</string>
     <string name="task_clear_data">Borrar datos</string>
     <string name="task_airplane_toggle">Modo avión 10s</string>
+    <string name="task_reboot">Reiniciar celular</string>
 
     <string name="permissions_title">Permisos requeridos</string>
     <string name="permission_accessibility">Servicio de Accesibilidad</string>

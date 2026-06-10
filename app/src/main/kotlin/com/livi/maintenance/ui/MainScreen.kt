@@ -115,6 +115,7 @@ fun MainScreen(viewModel: MainViewModel) {
                     val actionLabel = when (currentlyDeleting.action) {
                         ActionType.CLEAR_CACHE -> "Borrar caché"
                         ActionType.AIRPLANE_TOGGLE -> "Modo avión 10s"
+                        ActionType.REBOOT -> "Reiniciar celular"
                     }
                     val pkgLabel = currentlyDeleting.targetPackage?.let {
                         (context.applicationContext as LiviApp).appRepository.getAppLabel(it)
@@ -282,6 +283,7 @@ private fun TaskRow(
     val actionLabel = when (task.action) {
         ActionType.CLEAR_CACHE -> stringResource(R.string.task_clear_cache)
         ActionType.AIRPLANE_TOGGLE -> stringResource(R.string.task_airplane_toggle)
+        ActionType.REBOOT -> stringResource(R.string.task_reboot)
     }
     val timeStr = "%02d:%02d".format(task.hour, task.minute)
     Row(

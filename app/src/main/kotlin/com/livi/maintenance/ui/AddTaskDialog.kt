@@ -79,7 +79,25 @@ fun AddTaskDialog(
                     }
                 }
 
-                if (action != ActionType.AIRPLANE_TOGGLE) {
+                if (action == ActionType.REBOOT) {
+                    Spacer(Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text(
+                            "⚠️ Esta acción reiniciará el celular completo. " +
+                            "Cualquier proceso o llamada en curso se interrumpirá.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+
+                if (action == ActionType.CLEAR_CACHE) {
                     Spacer(Modifier.height(12.dp))
                     Text("App objetivo", style = MaterialTheme.typography.labelLarge)
                     Card(
@@ -219,7 +237,7 @@ fun AddTaskDialog(
                 }
 
                 Spacer(Modifier.height(16.dp))
-                val needsPkg = action != ActionType.AIRPLANE_TOGGLE
+                val needsPkg = action == ActionType.CLEAR_CACHE
                 val canSave = (!needsPkg || pkg != null) && hourValid && minuteValid
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = onDismiss) { Text("Cancelar") }
@@ -231,7 +249,7 @@ fun AddTaskDialog(
                                 TaskEntity(
                                     id = existing?.id ?: 0,
                                     action = action,
-                                    targetPackage = if (action == ActionType.AIRPLANE_TOGGLE) null else pkg,
+                                    targetPackage = if (action == ActionType.CLEAR_CACHE) pkg else null,
                                     hour = hourInt ?: 0,
                                     minute = minuteInt ?: 0,
                                     daysOfWeek = if (daysMask == 0) TaskEntity.EVERY_DAY else daysMask,
@@ -264,4 +282,5 @@ fun AddTaskDialog(
 private fun labelFor(a: ActionType) = when (a) {
     ActionType.CLEAR_CACHE -> "Borrar caché"
     ActionType.AIRPLANE_TOGGLE -> "Modo avión 10s"
+    ActionType.REBOOT -> "Reiniciar celular"
 }

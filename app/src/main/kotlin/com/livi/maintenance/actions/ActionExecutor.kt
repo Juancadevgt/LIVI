@@ -20,6 +20,46 @@ class ActionExecutor(
         return when (action) {
             ActionType.CLEAR_CACHE -> clearCache(targetPackage)
             ActionType.AIRPLANE_TOGGLE -> toggleAirplane()
+            ActionType.REBOOT -> rebootDevice()
+        }
+    }
+
+    /**
+     * Reinicia el dispositivo.
+     * - Si LIVI es Device Owner: usa DevicePolicyManager.reboot() — instantáneo, sin UI.
+     * - Si NO: abre el power dialog (Accessibility) y toca "Reiniciar" automáticamente,
+     *   luego confirma si aparece un diálogo de confirmación.
+     */
+    private suspend fun rebootDevice(): Result {
+        if (policyManager.isDeviceOwner()) {
+            Log.i(TAG, "Reboot: ruta Device Owner")
+            return if (policyManager.reboot()) Result.Success
+            else Result.Failure("DevicePolicyManager.reboot() falló")
+        }
+
+        Log.i(TAG, "Reboot: ruta Accessibility (power dialog + tap Reiniciar)")
+        val svc = LiviAccessibilityService.service()
+            ?: return Result.Failure("Servicio de Accesibilidad no activado")
+
+        return try {
+            LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.REBOOT)
+            svc.openPowerDialog()
+            // Le damos tiempo a que aparezca el menú, el service tape Reiniciar,
+            // aparezca el diálogo de confirmación y el service tape confirmar.
+            delay(10_000)
+            val success = LiviAccessibilityService.wasSuccessful()
+            LiviAccessibilityService.reset()
+            if (success) {
+                Log.i(TAG, "rebootDevice: tap exitoso sobre Reiniciar — el sistema procede a reiniciar")
+                Result.Success
+            } else {
+                Log.w(TAG, "rebootDevice: no se pudo encontrar/tocar el botón Reiniciar")
+                Result.Interrupted("No se pudo reiniciar (botón no detectado)")
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error en rebootDevice", t)
+            LiviAccessibilityService.reset()
+            Result.Failure(t.message ?: "Error desconocido")
         }
     }
 

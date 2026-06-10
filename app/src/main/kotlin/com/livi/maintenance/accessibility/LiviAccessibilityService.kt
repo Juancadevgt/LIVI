@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class LiviAccessibilityService : AccessibilityService() {
 
-    enum class Mode { IDLE, CLEAR_CACHE, AIRPLANE_TOGGLE_ON, AIRPLANE_TOGGLE_OFF }
+    enum class Mode { IDLE, CLEAR_CACHE, AIRPLANE_TOGGLE_ON, AIRPLANE_TOGGLE_OFF, REBOOT }
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -85,7 +85,42 @@ class LiviAccessibilityService : AccessibilityService() {
         when (m) {
             Mode.CLEAR_CACHE -> handleClearCache(root)
             Mode.AIRPLANE_TOGGLE_ON, Mode.AIRPLANE_TOGGLE_OFF -> handleAirplaneToggle(root)
+            Mode.REBOOT -> handleReboot(root)
             Mode.IDLE -> {}
+        }
+    }
+
+    /**
+     * En el diálogo de power (GLOBAL_ACTION_POWER_DIALOG) buscar y tocar "Reiniciar".
+     * Después, si aparece diálogo de confirmación, tocar el botón de confirmar.
+     */
+    private fun handleReboot(root: AccessibilityNodeInfo) {
+        val now = System.currentTimeMillis()
+        if (now - lastTapAt < 1500) return
+
+        // Buscar el botón "Reiniciar"
+        val rebootBtn = findClickableByAnyText(root, REBOOT_LABELS)
+        if (rebootBtn != null) {
+            Log.i(TAG, "Reiniciar encontrado: text='${rebootBtn.text}' desc='${rebootBtn.contentDescription}'")
+            performClickOrAncestor(rebootBtn)
+            lastTapAt = now
+            taskSucceeded.set(true)
+            Log.i(TAG, "Tap ejecutado sobre Reiniciar — MARKED SUCCESS")
+            // No marcamos IDLE: puede aparecer diálogo de confirmación. Si aparece,
+            // este mismo handleReboot lo manejará en el siguiente evento.
+            return
+        }
+
+        // ¿Apareció el diálogo de confirmación "¿Reiniciar este dispositivo?"?
+        val confirmBtn = findClickableByAnyText(root, REBOOT_CONFIRM_LABELS)
+        if (confirmBtn != null) {
+            Log.i(TAG, "Confirmar reinicio encontrado: text='${confirmBtn.text}'")
+            performClickOrAncestor(confirmBtn)
+            lastTapAt = now
+            mode.set(Mode.IDLE)  // listo, el celular se va a reiniciar
+            Log.i(TAG, "Tap ejecutado sobre confirmar reinicio")
+        } else {
+            Log.d(TAG, "Ni botón Reiniciar ni Confirmar visibles aún")
         }
     }
 
@@ -339,6 +374,11 @@ class LiviAccessibilityService : AccessibilityService() {
         }
     }
 
+    fun openPowerDialog() {
+        lastTapAt = 0L
+        performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
+    }
+
     fun openQuickSettings() {
         lastTapAt = 0L
         performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
@@ -367,6 +407,13 @@ class LiviAccessibilityService : AccessibilityService() {
         private val CACHE_LABELS = listOf(
             "Borrar caché", "Borrar memoria caché", "Limpiar caché",
             "Vaciar caché", "Eliminar caché", "Clear cache"
+        )
+        private val REBOOT_LABELS = listOf(
+            "Reiniciar", "Restart", "Reboot"
+        )
+        private val REBOOT_CONFIRM_LABELS = listOf(
+            "Reiniciar", "Aceptar", "OK", "Confirmar",
+            "Restart", "Reboot", "Confirm"
         )
 
         fun isConnected(): Boolean = instance.get() != null
