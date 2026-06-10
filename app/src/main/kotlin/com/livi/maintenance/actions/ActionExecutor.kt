@@ -58,33 +58,36 @@ class ActionExecutor(
             val initial = airplaneModeOn()
             Log.i(TAG, "===== toggleAirplane INICIO airplane_mode_on=$initial =====")
 
-            // ===== Tap 1: ACTIVAR =====
-            Log.i(TAG, "Tap 1: abriendo Settings.AIRPLANE_MODE_SETTINGS...")
-            LiviAccessibilityService.resetSuccess()
-            LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_ON)
-            openAirplaneSettings()
-            delay(4500)  // tiempo para que cargue la pantalla y el service haga tap
-            val tap1Success = LiviAccessibilityService.wasSuccessful()
-            LiviAccessibilityService.reset()
-            Log.i(TAG, "Tap 1 result: success=$tap1Success airplane=${airplaneModeOn()}")
+            // ===== Tap 1: ACTIVAR (solo si está apagado) =====
+            if (initial == 0) {
+                Log.i(TAG, "Tap 1: abriendo Settings.AIRPLANE_MODE_SETTINGS para activar...")
+                LiviAccessibilityService.resetSuccess()
+                LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_ON)
+                openAirplaneSettings()
+                delay(4500)
+                val tap1Success = LiviAccessibilityService.wasSuccessful()
+                LiviAccessibilityService.reset()
+                Log.i(TAG, "Tap 1 result: success=$tap1Success airplane=${airplaneModeOn()}")
 
-            if (!tap1Success) {
-                Log.w(TAG, "Tap 1 NO se ejecutó — switch no detectado")
+                if (!tap1Success) {
+                    Log.w(TAG, "Tap 1 NO se ejecutó — switch no detectado")
+                    svc.goHome()
+                    return Result.Interrupted("No se pudo activar el modo avión (switch no encontrado)")
+                }
+
+                Log.i(TAG, "Saliendo de la pantalla tras Tap 1...")
                 svc.goHome()
-                return Result.Interrupted("No se pudo activar el modo avión (switch no encontrado)")
+                delay(800)
+            } else {
+                Log.i(TAG, "Modo avión YA estaba activado — saltando Tap 1, solo esperando 10s")
             }
-
-            // SALIR de la pantalla tras activar
-            Log.i(TAG, "Saliendo de la pantalla tras Tap 1...")
-            svc.goHome()
-            delay(800)
 
             // ===== ESPERA 10 SEGUNDOS =====
             Log.i(TAG, "Esperando 10 segundos en modo avión activo...")
             delay(10_000)
 
             // ===== Tap 2: DESACTIVAR =====
-            Log.i(TAG, "Tap 2: re-abriendo Settings.AIRPLANE_MODE_SETTINGS...")
+            Log.i(TAG, "Tap 2: abriendo Settings.AIRPLANE_MODE_SETTINGS para desactivar...")
             LiviAccessibilityService.resetSuccess()
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_OFF)
             openAirplaneSettings()
@@ -98,11 +101,13 @@ class ActionExecutor(
             svc.goHome()
 
             val afterTap2 = airplaneModeOn()
-            Log.i(TAG, "===== toggleAirplane FIN airplane_mode_on=$afterTap2 (esperado $initial), tap2Success=$tap2Success =====")
+            Log.i(TAG, "===== toggleAirplane FIN airplane_mode_on=$afterTap2 (esperado 0), tap2Success=$tap2Success =====")
 
+            // El estado final esperado es SIEMPRE 0 (apagado) porque la tarea es
+            // "modo avión 10 segundos" — el objetivo es resetear la red y dejarlo apagado.
             when {
                 !tap2Success -> Result.Interrupted("No se pudo desactivar el modo avión (quedó activo)")
-                afterTap2 != initial -> Result.Interrupted("Estado final airplane=$afterTap2 != inicial $initial")
+                afterTap2 != 0 -> Result.Interrupted("Modo avión sigue activo tras el segundo tap")
                 else -> Result.Success
             }
         } catch (t: Throwable) {
