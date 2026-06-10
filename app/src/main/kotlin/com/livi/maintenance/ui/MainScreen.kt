@@ -1,7 +1,12 @@
 package com.livi.maintenance.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
 import com.livi.maintenance.LiviApp
 import com.livi.maintenance.R
 import com.livi.maintenance.accessibility.LiviAccessibilityService
@@ -147,10 +154,23 @@ fun MainScreen(viewModel: MainViewModel) {
 @Composable
 private fun PermissionsCard(context: Context) {
     val app = context.applicationContext as LiviApp
+
     val a11yConnected by produceState(initialValue = false) {
         while (true) {
             value = LiviAccessibilityService.isConnected()
             kotlinx.coroutines.delay(1500)
+        }
+    }
+    val notifGranted by produceState(initialValue = checkNotificationPermission(context)) {
+        while (true) {
+            value = checkNotificationPermission(context)
+            kotlinx.coroutines.delay(2000)
+        }
+    }
+    val batteryIgnored by produceState(initialValue = checkBatteryOptimizationIgnored(context)) {
+        while (true) {
+            value = checkBatteryOptimizationIgnored(context)
+            kotlinx.coroutines.delay(2000)
         }
     }
     val isDeviceOwner by produceState(initialValue = false) {
@@ -159,6 +179,7 @@ private fun PermissionsCard(context: Context) {
             kotlinx.coroutines.delay(3000)
         }
     }
+
     Card(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(
@@ -175,6 +196,27 @@ private fun PermissionsCard(context: Context) {
                     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
+            }
+            PermissionRow(
+                label = "Notificaciones",
+                granted = notifGranted
+            ) {
+                // Abre los ajustes de notificación de LIVI para que el usuario active manualmente
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }
+            PermissionRow(
+                label = "Sin optimización de batería",
+                granted = batteryIgnored
+            ) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:" + context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
             }
             if (isDeviceOwner) {
                 Spacer(Modifier.height(4.dp))
@@ -194,6 +236,19 @@ private fun PermissionsCard(context: Context) {
             }
         }
     }
+}
+
+private fun checkNotificationPermission(context: Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    } else true
+}
+
+private fun checkBatteryOptimizationIgnored(context: Context): Boolean {
+    val pm = context.getSystemService<PowerManager>() ?: return false
+    return pm.isIgnoringBatteryOptimizations(context.packageName)
 }
 
 @Composable

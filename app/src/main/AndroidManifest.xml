@@ -25,6 +25,10 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Para pedir exclusión de optimización de batería (asegura que UnlockReceiver
+         y WorkManager corran sin que Samsung los mate por ahorro de energía) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Opcional: para listar apps instaladas (Power Apps, Teams, etc.) -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
