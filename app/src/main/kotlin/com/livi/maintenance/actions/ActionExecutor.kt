@@ -49,42 +49,45 @@ class ActionExecutor(
     }
 
     private suspend fun toggleAirplaneViaQuickSettings(): Result {
-        val svc = LiviAccessibilityService.service()
-            ?: return Result.Failure("Servicio de Accesibilidad no activado")
+        if (!LiviAccessibilityService.isConnected()) {
+            return Result.Failure("Servicio de Accesibilidad no activado")
+        }
         return try {
             val initial = airplaneModeOn()
             Log.i(TAG, "===== toggleAirplane INICIO airplane_mode_on=$initial =====")
 
-            Log.i(TAG, "Tap 1: abriendo Quick Settings...")
+            // Tap 1: abrir pantalla de modo avión y dejar que el service haga tap
+            Log.i(TAG, "Tap 1: abriendo Settings.ACTION_AIRPLANE_MODE_SETTINGS...")
+            LiviAccessibilityService.resetSuccess()
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_ON)
-            svc.openQuickSettings()
-            delay(4500)
+            openAirplaneSettings()
+            delay(5000)
             val tap1Success = LiviAccessibilityService.wasSuccessful()
             LiviAccessibilityService.reset()
-            svc.goHome()
-            delay(500)
             val afterTap1 = airplaneModeOn()
             Log.i(TAG, "Despues Tap 1: airplane_mode_on=$afterTap1, success=$tap1Success")
 
             if (!tap1Success) {
-                Log.w(TAG, "Tap 1 NO se ejecutó — usuario probablemente canceló")
-                return Result.Interrupted("Cancelado antes del primer tap")
+                Log.w(TAG, "Tap 1 NO se ejecutó — switch no encontrado o usuario canceló")
+                return Result.Interrupted("No se pudo activar el modo avión")
             }
 
             Log.i(TAG, "Esperando 10 segundos antes del Tap 2...")
             delay(10_000)
 
-            // Resetear flag para detectar el segundo tap
+            // Tap 2: re-abrir pantalla y desactivar
+            Log.i(TAG, "Tap 2: re-abriendo pantalla de modo avión...")
             LiviAccessibilityService.resetSuccess()
-            Log.i(TAG, "Tap 2: abriendo Quick Settings...")
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.AIRPLANE_TOGGLE_OFF)
-            svc.openQuickSettings()
-            delay(4500)
+            openAirplaneSettings()
+            delay(5000)
             val tap2Success = LiviAccessibilityService.wasSuccessful()
             LiviAccessibilityService.reset()
-            svc.goHome()
             val afterTap2 = airplaneModeOn()
             Log.i(TAG, "===== toggleAirplane FIN airplane_mode_on=$afterTap2 (esperado $initial), tap2Success=$tap2Success =====")
+
+            // Salir de la pantalla de Ajustes
+            LiviAccessibilityService.service()?.goHome()
 
             when {
                 !tap2Success -> Result.Interrupted("Cancelado antes del segundo tap (modo avión quedó activo)")
@@ -95,6 +98,26 @@ class ActionExecutor(
             Log.e(TAG, "Error en toggle modo avión", t)
             LiviAccessibilityService.reset()
             Result.Failure(t.message ?: "Error desconocido")
+        }
+    }
+
+    /**
+     * Abre la pantalla de Ajustes específica del modo avión. Funciona desde
+     * background (BroadcastReceiver tocado desde notificación) a diferencia de
+     * GLOBAL_ACTION_QUICK_SETTINGS que Samsung restringe.
+     */
+    private fun openAirplaneSettings() {
+        val intent = Intent("android.settings.AIRPLANE_MODE_SETTINGS").apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        try {
+            context.startActivity(intent)
+        } catch (t: Throwable) {
+            // Fallback: pantalla de redes inalámbricas
+            Log.w(TAG, "ACTION_AIRPLANE_MODE_SETTINGS no soportado, usando WIRELESS_SETTINGS", t)
+            context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            })
         }
     }
 
