@@ -45,13 +45,15 @@ object PendingTaskNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Notificación corta y directa: el usuario debe entender QUÉ y QUÉ HACER de un vistazo.
-        val title = if (isRetry) "Aviso de IT: reintentar tarea" else "Aviso de IT: tarea pendiente"
-        val contentText = "$subtitle · hace $elapsed"
+        // Compacto: 1 línea de contenido + sub-texto con tiempo. Cabe completo
+        // en cualquier celular y se ve idéntico para las 3 acciones.
+        val title = if (isRetry) "Aviso de IT — Reintentar" else "Aviso de IT"
+        val contentText = subtitle                  // ej: "Borrar caché · Power Apps"
+        val subText = "hace $elapsed · Toca para ejecutar"
         val bigText = buildString {
             append(subtitle).append("\n")
-            append(if (isRetry) "Cancelada hace " else "Pendiente hace ").append(elapsed).append(".\n\n")
-            append("Toca aquí para ejecutar.")
+            append(if (isRetry) "Cancelada hace " else "Pendiente hace ").append(elapsed).append(".\n")
+            append("Toca esta notificación para ejecutar la tarea.")
         }
 
         val notification = NotificationCompat.Builder(
@@ -61,6 +63,7 @@ object PendingTaskNotifier {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title)
             .setContentText(contentText)
+            .setSubText(subText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOngoing(true)
