@@ -24,6 +24,10 @@ class LiviAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
 
     @Volatile private var lastTapAt: Long = 0L
+    /** Momento (ms) en que vimos por primera vez el botón "Borrar caché" deshabilitado.
+     *  Se usa para distinguir entre Android calculando tamaño (~1-2s) vs caché ya vacía (>4s).
+     */
+    @Volatile private var firstSeenDisabledAt: Long = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -64,9 +68,26 @@ class LiviAccessibilityService : AccessibilityService() {
             Log.i(TAG, "Borrar caché encontrado: text='${clearCache.text}' enabled=$effectiveEnabled")
 
             if (!effectiveEnabled) {
-                Log.d(TAG, "Botón deshabilitado, esperando")
+                // Distinguir entre "Android calculando" (transitorio) vs "caché vacía" (permanente).
+                if (firstSeenDisabledAt == 0L) {
+                    firstSeenDisabledAt = now
+                    Log.d(TAG, "Botón deshabilitado por primera vez — esperando cálculo de Android")
+                    return
+                }
+                val elapsed = now - firstSeenDisabledAt
+                if (elapsed < CACHE_EMPTY_TIMEOUT_MS) {
+                    Log.d(TAG, "Botón aún deshabilitado, esperando ($elapsed/$CACHE_EMPTY_TIMEOUT_MS ms)")
+                    return
+                }
+                // Pasaron >4s con el botón sigue deshabilitado → la caché ya está vacía.
+                Log.i(TAG, "Caché ya estaba vacía (botón deshabilitado tras ${elapsed}ms) — saliendo OK")
+                taskSucceeded.set(true)  // contar como éxito: no había nada que borrar
+                mode.set(Mode.IDLE)
+                finishWithBack()
                 return
             }
+
+            // Botón habilitado → tap real
             performClickOrAncestor(clearCache)
             lastTapAt = now
             taskSucceeded.set(true)
@@ -75,6 +96,9 @@ class LiviAccessibilityService : AccessibilityService() {
             finishWithBack()
             return
         }
+
+        // Resetear el contador si salimos de la pantalla de almacenamiento
+        firstSeenDisabledAt = 0L
 
         val storageEntry = findClickableByAnyText(root, STORAGE_LABELS)
         if (storageEntry != null) {
@@ -205,8 +229,16 @@ class LiviAccessibilityService : AccessibilityService() {
         fun reset() { mode.set(Mode.IDLE) }
 
         /** Resetea el flag de éxito antes de iniciar una nueva tarea */
-        fun resetSuccess() { taskSucceeded.set(false) }
+        fun resetSuccess() {
+            taskSucceeded.set(false)
+            // También reseteamos el contador de "botón deshabilitado" en la instancia activa
+            instance.get()?.firstSeenDisabledAt = 0L
+        }
         /** Devuelve true si el tap real se ejecutó durante la última tarea */
         fun wasSuccessful(): Boolean = taskSucceeded.get()
+
+        /** Tiempo máximo en ms para esperar a que Android termine de calcular el tamaño
+         *  de la caché antes de asumir que está vacía. */
+        private const val CACHE_EMPTY_TIMEOUT_MS = 4_000L
     }
 }
