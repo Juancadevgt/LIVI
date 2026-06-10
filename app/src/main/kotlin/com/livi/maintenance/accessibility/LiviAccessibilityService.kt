@@ -51,20 +51,46 @@ class LiviAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * Estrategia: primero busca el botón "Borrar caché" (si ya estamos en la pantalla
+     * de Almacenamiento). Solo si no lo encuentra, busca "Almacenamiento" para
+     * navegar a esa pantalla.
+     *
+     * Por qué este orden: en Samsung Android 15, el texto "Almacenamiento" también
+     * existe como TÍTULO en la pantalla destino, lo que causaba que mi código se
+     * quedara intentando tocar el título en bucle.
+     */
     private fun handleClearCache(root: AccessibilityNodeInfo) {
-        val storageEntry = findClickableByAnyText(root, listOf(
-            "Almacenamiento y caché", "Almacenamiento",
-            "Storage & cache", "Storage"
-        ))
-        if (storageEntry != null) { performClickOrAncestor(storageEntry); return }
+        val now = System.currentTimeMillis()
+        if (now - lastTapAt < 1500) return
 
-        val clearCache = findClickableByAnyText(root, listOf(
-            "Borrar caché", "Borrar memoria caché", "Limpiar caché", "Clear cache"
-        ))
+        // 1) ¿Ya estamos en Almacenamiento? Si vemos "Borrar caché", tap directo
+        val clearCache = findClickableByAnyText(root, CACHE_LABELS)
         if (clearCache != null) {
+            Log.i(TAG, "Borrar caché encontrado: text='${clearCache.text}' " +
+                "desc='${clearCache.contentDescription}' enabled=${clearCache.isEnabled}")
+            if (!clearCache.isEnabled) {
+                Log.w(TAG, "Botón Borrar caché está deshabilitado (probablemente caché=0). Cerrando.")
+                mode.set(Mode.IDLE)
+                finishWithBack()
+                return
+            }
             performClickOrAncestor(clearCache)
+            lastTapAt = now
+            Log.i(TAG, "Tap ejecutado sobre Borrar caché")
             mode.set(Mode.IDLE)
             finishWithBack()
+            return
+        }
+
+        // 2) Si no, estamos en Info de la app: navegar a Almacenamiento
+        val storageEntry = findClickableByAnyText(root, STORAGE_LABELS)
+        if (storageEntry != null) {
+            Log.i(TAG, "Tap en Almacenamiento para entrar")
+            performClickOrAncestor(storageEntry)
+            lastTapAt = now
+        } else {
+            Log.w(TAG, "No se encontró ni Borrar caché ni Almacenamiento en esta vista")
         }
     }
 
@@ -168,6 +194,22 @@ class LiviAccessibilityService : AccessibilityService() {
             "Airplane mode",
             "Flight mode",
             "Aeroplane mode"
+        )
+
+        private val STORAGE_LABELS = listOf(
+            "Almacenamiento y caché",
+            "Almacenamiento",
+            "Storage & cache",
+            "Storage"
+        )
+
+        private val CACHE_LABELS = listOf(
+            "Borrar caché",
+            "Borrar memoria caché",
+            "Limpiar caché",
+            "Vaciar caché",
+            "Eliminar caché",
+            "Clear cache"
         )
 
         fun isConnected(): Boolean = instance.get() != null
