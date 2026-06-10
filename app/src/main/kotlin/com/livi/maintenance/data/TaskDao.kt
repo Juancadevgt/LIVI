@@ -16,6 +16,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE enabled = 1")
     suspend fun getEnabled(): List<TaskEntity>
 
+    @Query("SELECT * FROM tasks WHERE enabled = 1 AND pendingExecution IS NOT NULL")
+    suspend fun getPending(): List<TaskEntity>
+
     @Query("SELECT * FROM tasks WHERE id = :id")
     suspend fun get(id: Long): TaskEntity?
 

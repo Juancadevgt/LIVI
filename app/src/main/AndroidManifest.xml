@@ -75,6 +75,22 @@
             </intent-filter>
         </receiver>
 
+        <!-- Recibe el tap del usuario en la notificacion de tarea pendiente -->
+        <receiver
+            android:name=".scheduler.PendingActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Recibe el desbloqueo del celular para auto-ejecutar tareas pendientes -->
+        <receiver
+            android:name=".scheduler.UnlockReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
+
         <!-- Device Owner / Admin: capa privilegiada para ejecutar tareas sin UI
              cuando IT enrola el dispositivo via Intune Android Enterprise.
              Si LIVI no es Device Owner, este receiver simplemente existe pero

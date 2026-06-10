@@ -14,7 +14,14 @@ data class TaskEntity(
     val daysOfWeek: Int,
     val enabled: Boolean = true,
     val lastRunAt: Long? = null,
-    val lastResult: String? = null
+    val lastResult: String? = null,
+    /**
+     * Si != null: la tarea iba a ejecutarse en ese momento pero el celular estaba
+     * bloqueado / con pantalla apagada y LIVI no es Device Owner, entonces se difirió.
+     * Se ejecutará cuando el usuario desbloquee el celular (ACTION_USER_PRESENT)
+     * o cuando toque la notificación pendiente.
+     */
+    val pendingExecution: Long? = null
 ) {
     companion object {
         const val DAY_MON = 1 shl 0

@@ -237,7 +237,25 @@ private fun TaskRow(
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Column(Modifier.weight(1f)) {
-            Text(actionLabel, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(actionLabel, fontWeight = FontWeight.SemiBold)
+                if (task.pendingExecution != null) {
+                    Spacer(Modifier.width(6.dp))
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                "Pendiente",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    )
+                }
+            }
             if (!pkgLabel.isNullOrBlank()) {
                 Text(pkgLabel, style = MaterialTheme.typography.bodySmall)
             }

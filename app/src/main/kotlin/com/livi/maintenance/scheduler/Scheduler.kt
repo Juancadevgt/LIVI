@@ -13,8 +13,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Programador de tareas. Usa OneTimeWorkRequest con `setInitialDelay` para la
  * próxima ejecución y, al completar el worker, vuelve a programar la siguiente
- * iteración. Esto da más control que PeriodicWorkRequest (mínimo 15 min) y
- * permite reaccionar a cambios de horario sin reiniciar la app.
+ * iteración.
  */
 class Scheduler(private val context: Context) {
 
@@ -32,7 +31,10 @@ class Scheduler(private val context: Context) {
             return
         }
         val nextRunMs = nextRunMillis(task) - System.currentTimeMillis()
-        val data = Data.Builder().putLong(LiviWorker.KEY_TASK_ID, task.id).build()
+        val data = Data.Builder()
+            .putLong(LiviWorker.KEY_TASK_ID, task.id)
+            .putBoolean(LiviWorker.KEY_FORCE, false)
+            .build()
         val request = OneTimeWorkRequestBuilder<LiviWorker>()
             .setInitialDelay(nextRunMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
             .setInputData(data)
@@ -43,8 +45,16 @@ class Scheduler(private val context: Context) {
         )
     }
 
-    fun runNow(task: TaskEntity) {
-        val data = Data.Builder().putLong(LiviWorker.KEY_TASK_ID, task.id).build()
+    /**
+     * Ejecuta la tarea AHORA sin esperar al próximo horario.
+     * @param force si true, salta el chequeo de pantalla bloqueada (usado cuando
+     *              el usuario tocó la notificación o desbloqueó el celular).
+     */
+    fun runNow(task: TaskEntity, force: Boolean = false) {
+        val data = Data.Builder()
+            .putLong(LiviWorker.KEY_TASK_ID, task.id)
+            .putBoolean(LiviWorker.KEY_FORCE, force)
+            .build()
         val request = OneTimeWorkRequestBuilder<LiviWorker>()
             .setInputData(data)
             .addTag(tagFor(task.id) + "_now")
@@ -62,8 +72,7 @@ class Scheduler(private val context: Context) {
     private fun tagFor(id: Long) = "livi_task_tag_$id"
 
     /**
-     * Calcula el próximo momento en milis a partir del cual debe ejecutarse la
-     * tarea, considerando `hour`, `minute` y el bitmask `daysOfWeek`.
+     * Próximo momento en milis considerando `hour`, `minute` y bitmask `daysOfWeek`.
      */
     private fun nextRunMillis(task: TaskEntity): Long {
         val now = Calendar.getInstance()
@@ -73,7 +82,6 @@ class Scheduler(private val context: Context) {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        // Si el bitmask es 0, asumimos cualquier día
         val mask = if (task.daysOfWeek == 0) TaskEntity.EVERY_DAY else task.daysOfWeek
         for (i in 0..7) {
             val day = candidate.get(Calendar.DAY_OF_WEEK)
