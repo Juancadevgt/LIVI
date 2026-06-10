@@ -12,6 +12,9 @@ local.properties
 *.jks
 !debug.keystore
 
+# Configuracion de firma (contiene contrasenas)
+keystore.properties
+
 # VS Code / Claude Code
 .vscode/
 .claude/
