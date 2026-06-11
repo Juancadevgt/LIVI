@@ -91,18 +91,19 @@ class LiviAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Toca "Reiniciar" repetidamente cada vez que aparezca, ya sea en el menú
-     * de power (GLOBAL_ACTION_POWER_DIALOG) o en el diálogo de confirmación.
-     * No marca IDLE — se mantiene activo hasta que el celular se reinicia
-     * (el proceso muere) o el ActionExecutor llega al timeout.
+     * Toca "Reiniciar" cada vez que aparezca. Cuenta los taps:
+     *  - Tap 1: típicamente en el menú power dialog ("Reiniciar")
+     *  - Tap 2: en el diálogo de confirmación ("¿Reiniciar este dispositivo?")
+     *
+     * ActionExecutor valida que haya AL MENOS 2 taps para considerar éxito,
+     * porque el primer tap solo abre el diálogo — el reinicio real ocurre
+     * con el segundo. Si solo hubo 1 tap, fue cancelación del usuario.
      */
     private fun handleReboot(root: AccessibilityNodeInfo) {
         val now = System.currentTimeMillis()
-        if (now - lastTapAt < 700) return  // anti-rebote corto para encadenar taps
+        if (now - lastTapAt < 700) return
 
-        // Buscar primero "Reiniciar" (presente tanto en menú power como en diálogo)
         var target = findClickableByAnyText(root, REBOOT_LABELS)
-        // Si no, buscar botones de confirmación genéricos (Aceptar/OK/Confirmar)
         if (target == null) {
             target = findClickableByAnyText(root, REBOOT_CONFIRM_LABELS)
         }
@@ -112,13 +113,12 @@ class LiviAccessibilityService : AccessibilityService() {
                 "desc='${target.contentDescription}' class=${target.className}")
             performClickOrAncestor(target)
             lastTapAt = now
-            taskSucceeded.set(true)  // hemos tocado al menos un botón
+            val newCount = rebootTapCount.incrementAndGet()
+            taskSucceeded.set(true)
+            Log.i(TAG, "Tap #$newCount sobre Reiniciar/Confirmar")
 
-            // Re-check forzado por si aparece otro botón (diálogo confirmación
-            // suele aparecer 500-1500ms después del primer tap)
             handler.postDelayed({
                 if (mode.get() == Mode.REBOOT) {
-                    Log.d(TAG, "Re-check forzado tras tap en Reiniciar")
                     rootInActiveWindow?.let { handleReboot(it) }
                 }
             }, 1200)
@@ -399,6 +399,8 @@ class LiviAccessibilityService : AccessibilityService() {
 
         /** Flag para detectar interrupción del usuario (Home/Back antes de terminar) */
         private val taskSucceeded = AtomicBoolean(false)
+        /** Contador de taps específico para REBOOT (necesita 2 taps para confirmar) */
+        private val rebootTapCount = java.util.concurrent.atomic.AtomicInteger(0)
 
         private val AIRPLANE_LABELS = listOf(
             "Modo avión", "Modo de avión", "Modo vuelo", "Avión",
@@ -428,6 +430,7 @@ class LiviAccessibilityService : AccessibilityService() {
         /** Resetea el flag de éxito antes de iniciar una nueva tarea */
         fun resetSuccess() {
             taskSucceeded.set(false)
+            rebootTapCount.set(0)
             instance.get()?.let {
                 it.firstSeenDisabledAt = 0L
                 it.scrollAttempts = 0
@@ -435,6 +438,8 @@ class LiviAccessibilityService : AccessibilityService() {
         }
         /** Devuelve true si el tap real se ejecutó durante la última tarea */
         fun wasSuccessful(): Boolean = taskSucceeded.get()
+        /** Cuántas veces se tocó "Reiniciar/Confirmar" en la tarea actual */
+        fun rebootTapsExecuted(): Int = rebootTapCount.get()
 
         /** Tiempo máximo en ms para esperar a que Android termine de calcular el tamaño
          *  de la caché antes de asumir que está vacía. */

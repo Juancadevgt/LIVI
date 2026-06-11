@@ -9,7 +9,7 @@ import com.livi.maintenance.accessibility.LiviAccessibilityService
 import com.livi.maintenance.privileged.PolicyManager
 import kotlinx.coroutines.delay
 
-class ActionExecutor(
+class 00ActionExecutor(
     private val context: Context,
     private val policyManager: PolicyManager = PolicyManager(context)
 ) {
@@ -49,26 +49,34 @@ class ActionExecutor(
             LiviAccessibilityService.setMode(LiviAccessibilityService.Mode.REBOOT)
             svc.openPowerDialog()
 
-            // Polling cada 300ms hasta detectar success o timeout 10s
+            // El reinicio típicamente requiere 2 taps:
+            //   tap 1 en menú power → diálogo de confirmación → tap 2 = reinicio real
+            // Esperamos hasta detectar 2 taps. Si solo hay 1 tras 8s, fue cancelación.
             var elapsed = 0L
-            while (elapsed < 10_000) {
+            while (elapsed < 12_000) {
                 delay(300)
                 elapsed += 300
-                if (LiviAccessibilityService.wasSuccessful()) {
-                    Log.i(TAG, "rebootDevice: tap exitoso detectado tras ${elapsed}ms")
-                    // Esperar 1.5s para que el segundo tap (diálogo confirmación) se haga,
-                    // pero MENOS de lo que tarda el sistema en matar el proceso (~3-5s).
-                    // Esto deja tiempo al LiviWorker de hacer cleanup antes del reinicio.
-                    delay(1500)
+                val taps = LiviAccessibilityService.rebootTapsExecuted()
+                if (taps >= 2) {
+                    Log.i(TAG, "rebootDevice: $taps taps detectados tras ${elapsed}ms — reinicio confirmado")
+                    delay(1000)  // dar tiempo al cleanup del LiviWorker antes del reboot real
                     LiviAccessibilityService.reset()
-                    Log.i(TAG, "rebootDevice: retornando Success — LiviWorker hará cleanup antes del reboot")
                     return Result.Success
                 }
+                // Si tras 8s solo hubo 1 tap, asumir cancelación del usuario
+                if (taps == 1 && elapsed >= 8_000) {
+                    Log.w(TAG, "rebootDevice: solo 1 tap en ${elapsed}ms — usuario canceló confirmación")
+                    LiviAccessibilityService.reset()
+                    svc.goHome()
+                    return Result.Interrupted("Reinicio cancelado por el usuario")
+                }
             }
-            // 10s sin éxito
+            // 12s sin nada
             LiviAccessibilityService.reset()
-            Log.w(TAG, "rebootDevice: no se pudo encontrar/tocar el botón Reiniciar en 10s")
-            Result.Interrupted("No se pudo reiniciar (botón no detectado)")
+            svc.goHome()
+            val finalTaps = LiviAccessibilityService.rebootTapsExecuted()
+            Log.w(TAG, "rebootDevice: timeout con $finalTaps taps")
+            Result.Interrupted("No se pudo reiniciar (botón no detectado o cancelado)")
         } catch (t: Throwable) {
             Log.e(TAG, "Error en rebootDevice", t)
             LiviAccessibilityService.reset()
