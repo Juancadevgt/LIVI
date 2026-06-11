@@ -30,4 +30,35 @@
     <string name="device_admin_label">LIVI Administrador</string>
     <string name="device_admin_description">Permite a LIVI ejecutar tareas programadas con el celular bloqueado. Solo se activa cuando IT enrola el dispositivo.</string>
     <string name="device_owner_status">Device Owner</string>
+
+    <!-- Modo Admin -->
+    <string name="admin_enter">Entrar a modo Admin</string>
+    <string name="admin_password_hint">Contraseña</string>
+    <string name="admin_password_dialog_title">Acceso de Administrador</string>
+    <string name="admin_password_dialog_msg">Ingresa la contraseña proporcionada por IT.</string>
+    <string name="admin_password_wrong">Contraseña incorrecta. Intentos restantes: %1$d</string>
+    <string name="admin_password_locked">Bloqueado por %1$d segundos.</string>
+    <string name="admin_mode_banner">MODO ADMIN — los cambios se aplican a este celular</string>
+    <string name="admin_exit">Salir de Admin</string>
+    <string name="admin_factory_reset">Restablecer tareas de fábrica</string>
+    <string name="admin_factory_reset_confirm">Esto borrará todas las tareas actuales y volverá a las tareas predefinidas. ¿Continuar?</string>
+
+    <!-- Identidad del usuario -->
+    <string name="user_unidentified">(Sin identificar)</string>
+    <string name="managed_by_it">Configuración gestionada por IT</string>
+
+    <!-- Reportar problema -->
+    <string name="report_problem">Reportar problema a IT</string>
+    <string name="report_problem_subject">[LIVI] Problema reportado por %1$s</string>
+    <string name="report_problem_body_header">Reporte automático de LIVI</string>
+
+    <!-- App restrictions (Intune App Configuration Policies) -->
+    <string name="restriction_user_email_title">Correo del usuario</string>
+    <string name="restriction_user_email_desc">Correo corporativo del usuario asignado al dispositivo</string>
+    <string name="restriction_user_upn_title">UPN del usuario</string>
+    <string name="restriction_user_upn_desc">User Principal Name de Azure AD</string>
+    <string name="restriction_user_name_title">Nombre del usuario</string>
+    <string name="restriction_user_name_desc">Nombre completo del usuario</string>
+    <string name="restriction_support_email_title">Correo de soporte IT</string>
+    <string name="restriction_support_email_desc">A donde se envian los reportes de problemas</string>
 </resources>

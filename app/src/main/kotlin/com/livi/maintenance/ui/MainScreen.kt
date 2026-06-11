@@ -12,10 +12,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -23,23 +31,36 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import com.livi.maintenance.BuildConfig
 import com.livi.maintenance.LiviApp
 import com.livi.maintenance.R
 import com.livi.maintenance.accessibility.LiviAccessibilityService
 import com.livi.maintenance.actions.ActionType
+import com.livi.maintenance.admin.AdminMode
 import com.livi.maintenance.data.TaskEntity
+import com.livi.maintenance.identity.UserIdentity
+import com.livi.maintenance.ui.theme.ThemePreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
     val tasks by viewModel.tasks.collectAsState()
     val context = LocalContext.current
+    val isAdmin = AdminMode.isActive
+
     var showAdd by rememberSaveable { mutableStateOf(false) }
     var editingId: Long? by rememberSaveable { mutableStateOf(null) }
     var deletingId: Long? by rememberSaveable { mutableStateOf(null) }
+    var showPasswordDialog by rememberSaveable { mutableStateOf(false) }
+    var showResetDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Cargar identidad del usuario una sola vez (Intune config + fallback).
+    val identity = remember { UserIdentity.load(context) }
 
     val editing = remember(editingId, tasks) {
         editingId?.let { id -> tasks.find { it.id == id } }
@@ -50,37 +71,111 @@ fun MainScreen(viewModel: MainViewModel) {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.app_name)) })
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                colors = if (isAdmin) {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        titleContentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        actionIconContentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                } else TopAppBarDefaults.topAppBarColors(),
+                actions = {
+                    ThemeSwitch()
+                    if (isAdmin) {
+                        IconButton(onClick = { AdminMode.exit() }) {
+                            Icon(
+                                Icons.Default.LockOpen,
+                                contentDescription = stringResource(R.string.admin_exit)
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = { showPasswordDialog = true }) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = stringResource(R.string.admin_enter)
+                            )
+                        }
+                    }
+                }
+            )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAdd = true }) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_add))
+            if (isAdmin) {
+                FloatingActionButton(onClick = { showAdd = true }) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_add))
+                }
             }
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            PermissionsCard(context)
-            Text(
-                stringResource(R.string.title_tasks),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(16.dp)
-            )
+
+            if (isAdmin) {
+                AdminBanner()
+            }
+
             LazyColumn(modifier = Modifier.fillMaxSize()) {
+                item { IdentityCard(identity) }
+                item { PermissionsCard(context) }
+
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.title_tasks),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (!isAdmin) {
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        stringResource(R.string.managed_by_it),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
                 items(tasks, key = { it.id }) { task ->
                     TaskRow(
                         task = task,
-                        onClick = { editingId = task.id },
+                        readOnly = !isAdmin,
+                        onClick = { if (isAdmin) editingId = task.id },
                         onRun = { viewModel.runNow(task) },
-                        onToggle = { viewModel.upsert(task.copy(enabled = it)) },
-                        onDelete = { deletingId = task.id }
+                        onToggle = { if (isAdmin) viewModel.upsert(task.copy(enabled = it)) },
+                        onDelete = { if (isAdmin) deletingId = task.id }
                     )
                     HorizontalDivider()
                 }
+
+                if (isAdmin) {
+                    item {
+                        Box(modifier = Modifier.padding(16.dp)) {
+                            OutlinedButton(
+                                onClick = { showResetDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.admin_factory_reset))
+                            }
+                        }
+                    }
+                }
+
+                item { ReportProblemButton(context, identity) }
+                item { Spacer(Modifier.height(24.dp)) }
             }
         }
     }
 
-    if (showAdd) {
+    if (showAdd && isAdmin) {
         AddTaskDialog(
             onDismiss = { showAdd = false },
             onSave = { newTask ->
@@ -91,7 +186,7 @@ fun MainScreen(viewModel: MainViewModel) {
     }
 
     val currentlyEditing = editing
-    if (currentlyEditing != null) {
+    if (currentlyEditing != null && isAdmin) {
         AddTaskDialog(
             existing = currentlyEditing,
             onDismiss = { editingId = null },
@@ -103,7 +198,7 @@ fun MainScreen(viewModel: MainViewModel) {
     }
 
     val currentlyDeleting = deleting
-    if (currentlyDeleting != null) {
+    if (currentlyDeleting != null && isAdmin) {
         AlertDialog(
             onDismissRequest = { deletingId = null },
             icon = { Icon(Icons.Default.Delete, contentDescription = null) },
@@ -150,6 +245,231 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         )
     }
+
+    if (showPasswordDialog) {
+        AdminPasswordDialog(
+            onDismiss = { showPasswordDialog = false },
+            onSuccess = { showPasswordDialog = false }
+        )
+    }
+
+    if (showResetDialog && isAdmin) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            icon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+            title = { Text(stringResource(R.string.admin_factory_reset)) },
+            text = { Text(stringResource(R.string.admin_factory_reset_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    (context.applicationContext as LiviApp).resetToDefaultTasks()
+                    showResetDialog = false
+                }) { Text("Restablecer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
+}
+
+/**
+ * Interruptor de modo claro/oscuro en la barra superior. El ícono interno
+ * cambia (sol/luna) según el estado, y la elección se persiste en SharedPreferences.
+ */
+@Composable
+private fun ThemeSwitch() {
+    val context = LocalContext.current
+    val isDark = ThemePreference.isDarkMode
+    Switch(
+        checked = isDark,
+        onCheckedChange = { ThemePreference.setDarkMode(context, it) },
+        thumbContent = {
+            Icon(
+                imageVector = if (isDark) Icons.Default.DarkMode else Icons.Default.LightMode,
+                contentDescription = if (isDark) "Modo oscuro" else "Modo claro",
+                modifier = Modifier.size(SwitchDefaults.IconSize)
+            )
+        }
+    )
+    Spacer(Modifier.width(4.dp))
+}
+
+@Composable
+private fun AdminBanner() {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Icon(
+                Icons.Default.LockOpen,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.admin_mode_banner),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun IdentityCard(identity: UserIdentity.Identity) {
+    Card(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Icon(
+                Icons.Default.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    identity.displayLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    identity.secondaryLabel,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (identity.isIdentified) {
+                    Text(
+                        identity.model,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportProblemButton(context: Context, identity: UserIdentity.Identity) {
+    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        FilledTonalButton(
+            onClick = { sendProblemReport(context, identity) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Email, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.report_problem))
+        }
+    }
+}
+
+private fun sendProblemReport(context: Context, identity: UserIdentity.Identity) {
+    val subject = context.getString(
+        R.string.report_problem_subject,
+        identity.displayLabel
+    )
+    val body = buildString {
+        appendLine(context.getString(R.string.report_problem_body_header))
+        appendLine("─".repeat(30))
+        appendLine("Usuario: ${identity.displayName.ifBlank { "(sin datos)" }}")
+        appendLine("Correo: ${identity.email.ifBlank { "(sin datos)" }}")
+        appendLine("UPN: ${identity.upn.ifBlank { "(sin datos)" }}")
+        appendLine("Modelo: ${identity.model}")
+        if (identity.serial.isNotBlank()) appendLine("Serial: ${identity.serial}")
+        appendLine("LIVI versión: ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
+        appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+        appendLine("─".repeat(30))
+        appendLine()
+        appendLine("Describe el problema aquí:")
+        appendLine()
+    }
+    val intent = Intent(Intent.ACTION_SENDTO).apply {
+        data = Uri.parse("mailto:${identity.supportEmail}")
+        putExtra(Intent.EXTRA_SUBJECT, subject)
+        putExtra(Intent.EXTRA_TEXT, body)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(intent)
+    } catch (_: Throwable) {
+        // No hay app de correo instalada — silenciar
+    }
+}
+
+@Composable
+private fun AdminPasswordDialog(
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit
+) {
+    var password by rememberSaveable { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        title = { Text(stringResource(R.string.admin_password_dialog_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.admin_password_dialog_msg))
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        errorMessage = null
+                    },
+                    label = { Text(stringResource(R.string.admin_password_hint)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = errorMessage != null,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                errorMessage?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    when (val result = AdminMode.tryEnter(password)) {
+                        is AdminMode.Result.Success -> onSuccess()
+                        is AdminMode.Result.WrongPassword -> {
+                            errorMessage = context.getString(
+                                R.string.admin_password_wrong,
+                                result.attemptsLeft
+                            )
+                            password = ""
+                        }
+                        is AdminMode.Result.Locked -> {
+                            errorMessage = context.getString(
+                                R.string.admin_password_locked,
+                                result.secondsRemaining
+                            )
+                            password = ""
+                        }
+                    }
+                }
+            ) { Text("Entrar") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
 }
 
 @Composable
@@ -181,7 +501,7 @@ private fun PermissionsCard(context: Context) {
         }
     }
 
-    Card(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+    Card(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(
                 stringResource(R.string.permissions_title),
@@ -202,7 +522,6 @@ private fun PermissionsCard(context: Context) {
                 label = "Notificaciones",
                 granted = notifGranted
             ) {
-                // Abre los ajustes de notificación de LIVI para que el usuario active manualmente
                 val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
                     putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -270,6 +589,7 @@ private fun PermissionRow(label: String, granted: Boolean, onGrant: () -> Unit) 
 @Composable
 private fun TaskRow(
     task: TaskEntity,
+    readOnly: Boolean,
     onClick: () -> Unit,
     onRun: () -> Unit,
     onToggle: (Boolean) -> Unit,
@@ -286,12 +606,14 @@ private fun TaskRow(
         ActionType.REBOOT -> stringResource(R.string.task_reboot)
     }
     val timeStr = "%02d:%02d".format(task.hour, task.minute)
+    val rowModifier = if (readOnly) {
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
+    } else {
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+        modifier = rowModifier
     ) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -320,19 +642,35 @@ private fun TaskRow(
                 "$timeStr · ${daysLabel(task.daysOfWeek)} · ${frequencyLabel(task.repeatWeeks)}",
                 style = MaterialTheme.typography.bodySmall
             )
-            task.lastResult?.let {
-                Text("Última: $it", style = MaterialTheme.typography.labelSmall)
+            task.lastResult?.let { result ->
+                val ts = task.lastRunAt?.let { formatLastRun(it) }
+                val text = if (ts != null) "Última: $result · $ts" else "Última: $result"
+                Text(text, style = MaterialTheme.typography.labelSmall)
             }
         }
-        Switch(checked = task.enabled, onCheckedChange = onToggle)
+        if (!readOnly) {
+            Switch(checked = task.enabled, onCheckedChange = onToggle)
+        } else if (!task.enabled) {
+            AssistChip(
+                onClick = {},
+                label = { Text("Off", style = MaterialTheme.typography.labelSmall) }
+            )
+        }
         IconButton(onClick = onRun) {
             Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.action_run_now))
         }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete))
+        if (!readOnly) {
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete))
+            }
         }
     }
 }
+
+private val lastRunFormatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+
+private fun formatLastRun(millis: Long): String =
+    lastRunFormatter.format(java.util.Date(millis))
 
 private fun frequencyLabel(weeks: Int): String = when (weeks) {
     1 -> "cada semana"

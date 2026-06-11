@@ -26,10 +26,17 @@ android {
         applicationId = "com.livi.maintenance"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Contraseña del modo Admin compilada en el APK. Solo IT la conoce.
+        // Si se necesita cambiar, generar nuevo APK con el nuevo valor.
+        buildConfigField("String", "ADMIN_PASSWORD", "\"Livi2026+\"")
+
+        // Correo de soporte por defecto (Intune puede sobrescribirlo via App Config).
+        buildConfigField("String", "DEFAULT_SUPPORT_EMAIL", "\"juan.jimenez@umbralcorp.com\"")
     }
 
     signingConfigs {
@@ -71,6 +78,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     sourceSets {
         getByName("main") {

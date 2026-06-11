@@ -9,7 +9,7 @@ import com.livi.maintenance.accessibility.LiviAccessibilityService
 import com.livi.maintenance.privileged.PolicyManager
 import kotlinx.coroutines.delay
 
-class 00ActionExecutor(
+class ActionExecutor(
     private val context: Context,
     private val policyManager: PolicyManager = PolicyManager(context)
 ) {

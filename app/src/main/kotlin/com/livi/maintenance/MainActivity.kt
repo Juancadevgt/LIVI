@@ -11,9 +11,12 @@ import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.core.content.ContextCompat
+import com.livi.maintenance.admin.AdminMode
 import com.livi.maintenance.ui.MainScreen
 import com.livi.maintenance.ui.MainViewModel
 import com.livi.maintenance.ui.MainViewModelFactory
+import com.livi.maintenance.ui.theme.LiviTheme
+import com.livi.maintenance.ui.theme.ThemePreference
 
 class MainActivity : ComponentActivity() {
 
@@ -27,14 +30,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ThemePreference.load(this)
         maybeRequestNotificationPermission()
         setContent {
-            MaterialTheme {
+            LiviTheme(darkTheme = ThemePreference.isDarkMode) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     MainScreen(viewModel = viewModel)
                 }
             }
         }
+    }
+
+    /**
+     * Salir del modo Admin cuando la app pasa a background. Así, si IT entra a
+     * Admin en el celular del usuario y se distrae, al cambiar de app el modo
+     * se cierra solo y el usuario no puede modificar tareas accidentalmente.
+     */
+    override fun onPause() {
+        super.onPause()
+        AdminMode.exit()
     }
 
     // Nota: el onResume ya NO ejecuta pendientes automáticamente. Una tarea pendiente

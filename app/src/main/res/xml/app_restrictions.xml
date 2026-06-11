@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Restricciones que Intune puede establecer via App Configuration Policies.
+  IT en Intune asigna las variables {{mail}}, {{userprincipalname}}, etc. a estas
+  claves y LIVI las lee automaticamente para identificar al usuario sin login.
+
+  Si la app se instala fuera de Intune (sideload, debug), todas vienen vacias y
+  LIVI cae al fallback (modelo + serial del celular).
+-->
+<restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <restriction
+        android:key="user_email"
+        android:title="@string/restriction_user_email_title"
+        android:description="@string/restriction_user_email_desc"
+        android:restrictionType="string"
+        android:defaultValue="" />
+
+    <restriction
+        android:key="user_upn"
+        android:title="@string/restriction_user_upn_title"
+        android:description="@string/restriction_user_upn_desc"
+        android:restrictionType="string"
+        android:defaultValue="" />
+
+    <restriction
+        android:key="user_display_name"
+        android:title="@string/restriction_user_name_title"
+        android:description="@string/restriction_user_name_desc"
+        android:restrictionType="string"
+        android:defaultValue="" />
+
+    <restriction
+        android:key="support_email"
+        android:title="@string/restriction_support_email_title"
+        android:description="@string/restriction_support_email_desc"
+        android:restrictionType="string"
+        android:defaultValue="juan.jimenez@umbralcorp.com" />
+
+</restrictions>
