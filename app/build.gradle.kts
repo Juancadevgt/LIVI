@@ -26,8 +26,8 @@ android {
         applicationId = "com.livi.maintenance"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -37,6 +37,12 @@ android {
 
         // Correo de soporte por defecto (Intune puede sobrescribirlo via App Config).
         buildConfigField("String", "DEFAULT_SUPPORT_EMAIL", "\"juan.jimenez@umbralcorp.com\"")
+
+        // URL del flow de Power Automate que recibe la telemetría y la guarda en
+        // SharePoint. Se lee de keystore.properties (no se commitea al repo) para
+        // no exponer la URL pública. Si está vacía, LIVI no envía telemetría.
+        val telemetryUrl = keystoreProperties.getProperty("telemetryUrl", "")
+        buildConfigField("String", "TELEMETRY_URL", "\"$telemetryUrl\"")
     }
 
     signingConfigs {

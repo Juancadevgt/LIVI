@@ -34,6 +34,7 @@ class Scheduler(private val context: Context) {
         val data = Data.Builder()
             .putLong(LiviWorker.KEY_TASK_ID, task.id)
             .putBoolean(LiviWorker.KEY_FORCE, false)
+            .putString(LiviWorker.KEY_ORIGIN, ORIGIN_AUTOMATICA)
             .build()
         val request = OneTimeWorkRequestBuilder<LiviWorker>()
             .setInitialDelay(nextRunMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
@@ -54,6 +55,7 @@ class Scheduler(private val context: Context) {
         val data = Data.Builder()
             .putLong(LiviWorker.KEY_TASK_ID, task.id)
             .putBoolean(LiviWorker.KEY_FORCE, force)
+            .putString(LiviWorker.KEY_ORIGIN, ORIGIN_MANUAL)
             .build()
         val request = OneTimeWorkRequestBuilder<LiviWorker>()
             .setInputData(data)
@@ -63,6 +65,12 @@ class Scheduler(private val context: Context) {
             uniqueName(task.id) + "_now", ExistingWorkPolicy.REPLACE, request
         )
     }
+
+    /**
+     * Calcula el próximo timestamp en que se ejecutaría una tarea, sin programar
+     * nada. Útil para telemetría (saber "cuándo le toca la próxima").
+     */
+    fun nextRunMillisFor(task: TaskEntity): Long = nextRunMillis(task)
 
     fun cancel(taskId: Long) {
         WorkManager.getInstance(context).cancelUniqueWork(uniqueName(taskId))
@@ -109,6 +117,11 @@ class Scheduler(private val context: Context) {
             candidate.add(Calendar.DAY_OF_YEAR, 1)
         }
         return candidate.timeInMillis
+    }
+
+    companion object {
+        const val ORIGIN_AUTOMATICA = "AUTOMATICA"
+        const val ORIGIN_MANUAL = "MANUAL"
     }
 
     private fun dayOfWeekToBit(dow: Int): Int = when (dow) {

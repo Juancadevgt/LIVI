@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.core.content.ContextCompat
 import com.livi.maintenance.admin.AdminMode
+import com.livi.maintenance.identity.ManualIdentity
 import com.livi.maintenance.ui.MainScreen
 import com.livi.maintenance.ui.MainViewModel
 import com.livi.maintenance.ui.MainViewModelFactory
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemePreference.load(this)
+        ManualIdentity.load(this)
         maybeRequestNotificationPermission()
         setContent {
             LiviTheme(darkTheme = ThemePreference.isDarkMode) {

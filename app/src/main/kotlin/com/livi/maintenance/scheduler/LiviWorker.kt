@@ -9,6 +9,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.livi.maintenance.LiviApp
 import com.livi.maintenance.actions.ActionExecutor
+import com.livi.maintenance.telemetry.Telemetry
 
 /**
  * Worker que ejecuta una tarea programada.
@@ -27,6 +28,7 @@ class LiviWorker(
     override suspend fun doWork(): Result {
         val taskId = inputData.getLong(KEY_TASK_ID, -1L)
         val force = inputData.getBoolean(KEY_FORCE, false)
+        val origen = inputData.getString(KEY_ORIGIN) ?: Telemetry.Origin.AUTOMATICA
         if (taskId < 0) return Result.failure()
 
         val app = applicationContext as LiviApp
@@ -50,6 +52,9 @@ class LiviWorker(
         val executor = ActionExecutor(ctx)
         val result = executor.execute(task.action, task.targetPackage)
 
+        val resultadoTelem: String
+        val mensajeTelem: String
+
         when (result) {
             is ActionExecutor.Result.Success -> {
                 Log.i(TAG, "Tarea ${task.id} OK")
@@ -61,6 +66,8 @@ class LiviWorker(
                     )
                 )
                 PendingTaskNotifier.cancel(ctx, task.id)
+                resultadoTelem = "OK"
+                mensajeTelem = "Tarea ejecutada correctamente"
             }
 
             is ActionExecutor.Result.Failure -> {
@@ -73,6 +80,8 @@ class LiviWorker(
                     )
                 )
                 PendingTaskNotifier.cancel(ctx, task.id)
+                resultadoTelem = "ERR"
+                mensajeTelem = result.message
             }
 
             is ActionExecutor.Result.Interrupted -> {
@@ -88,8 +97,22 @@ class LiviWorker(
                 )
                 // Notificación de reintento: incluye botón "Ejecutar ahora"
                 PendingTaskNotifier.show(ctx, task.copy(pendingExecution = retryTs), isRetry = true)
+                resultadoTelem = "Interrumpido"
+                mensajeTelem = result.message
             }
         }
+
+        // Telemetría a Power Automate → SharePoint. Fire-and-forget: si falla red,
+        // sólo logea, no rompe la ejecución de la tarea.
+        Telemetry.report(
+            context = ctx,
+            task = task,
+            resultado = resultadoTelem,
+            mensaje = mensajeTelem,
+            proximaEjecucionMs = app.scheduler.nextRunMillisFor(task),
+            origen = origen
+        )
+
         return Result.success()
     }
 
@@ -111,5 +134,6 @@ class LiviWorker(
         private const val TAG = "LiviWorker"
         const val KEY_TASK_ID = "task_id"
         const val KEY_FORCE = "force_execute"
+        const val KEY_ORIGIN = "origin"
     }
 }

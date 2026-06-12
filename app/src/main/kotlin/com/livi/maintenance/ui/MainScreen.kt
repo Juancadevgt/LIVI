@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
@@ -43,6 +44,7 @@ import com.livi.maintenance.accessibility.LiviAccessibilityService
 import com.livi.maintenance.actions.ActionType
 import com.livi.maintenance.admin.AdminMode
 import com.livi.maintenance.data.TaskEntity
+import com.livi.maintenance.identity.ManualIdentity
 import com.livi.maintenance.identity.UserIdentity
 import com.livi.maintenance.ui.theme.ThemePreference
 
@@ -322,6 +324,44 @@ private fun AdminBanner() {
 
 @Composable
 private fun IdentityCard(identity: UserIdentity.Identity) {
+    val context = LocalContext.current
+    val manualEmail = ManualIdentity.email
+    val isAdmin = AdminMode.isActive
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Prioridad de fuentes: Intune > Manual > Ninguna.
+    val effectiveLabel: String
+    val effectiveSecondary: String
+    val hasManualOnly: Boolean
+    val hasNothing: Boolean
+    when {
+        identity.isIdentified -> {
+            effectiveLabel = identity.displayLabel
+            effectiveSecondary = identity.secondaryLabel
+            hasManualOnly = false
+            hasNothing = false
+        }
+        manualEmail.isNotBlank() -> {
+            effectiveLabel = manualEmail
+            effectiveSecondary = identity.model
+            hasManualOnly = true
+            hasNothing = false
+        }
+        else -> {
+            effectiveLabel = identity.displayLabel  // "(Sin identificar)"
+            effectiveSecondary = identity.model
+            hasManualOnly = false
+            hasNothing = true
+        }
+    }
+
+    // Los controles SOLO aparecen en modo Admin. Usuario común solo visualiza.
+    //  - Sin identidad + Admin  → ícono "+" para agregar
+    //  - Con manual + Admin     → ícono lápiz para editar
+    //  - Con Intune             → sin botón (Intune manda)
+    val showAddButton = isAdmin && hasNothing
+    val showEditButton = isAdmin && hasManualOnly
+
     Card(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
     ) {
@@ -337,12 +377,12 @@ private fun IdentityCard(identity: UserIdentity.Identity) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    identity.displayLabel,
+                    effectiveLabel,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    identity.secondaryLabel,
+                    effectiveSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )
                 if (identity.isIdentified) {
@@ -352,8 +392,105 @@ private fun IdentityCard(identity: UserIdentity.Identity) {
                     )
                 }
             }
+            if (showAddButton) {
+                IconButton(onClick = { showDialog = true }) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Agregar identificador",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else if (showEditButton) {
+                IconButton(onClick = { showDialog = true }) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Editar identificador",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
+
+    if (showDialog) {
+        ManualIdentityDialog(
+            initialEmail = manualEmail,
+            isEditing = hasManualOnly,
+            onDismiss = { showDialog = false },
+            onSave = { email ->
+                ManualIdentity.save(context, email)
+                showDialog = false
+            }
+        )
+    }
+}
+
+/**
+ * Diálogo para que el Admin agregue o edite manualmente el correo del
+ * usuario cuando Intune todavía no ha enviado la identidad via App
+ * Configuration Policy.
+ *
+ * Validación: el correo debe contener "@" (el dominio se valida fuera,
+ * porque varía por organización).
+ */
+@Composable
+private fun ManualIdentityDialog(
+    initialEmail: String,
+    isEditing: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var email by rememberSaveable { mutableStateOf(initialEmail) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Person, contentDescription = null) },
+        title = { Text(if (isEditing) "Editar identificador" else "Agregar identificador") },
+        text = {
+            Column {
+                Text(
+                    "Escribe el correo electronico para identificar este dispositivo.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = {
+                        email = it
+                        errorMessage = null
+                    },
+                    label = { Text("Correo") },
+                    placeholder = { Text("nombre@empresa.com") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    isError = errorMessage != null,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                errorMessage?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val trimmed = email.trim()
+                when {
+                    trimmed.isBlank() -> errorMessage = "El correo no puede estar vacio"
+                    !trimmed.contains("@") -> errorMessage = "El correo debe contener @"
+                    else -> onSave(trimmed)
+                }
+            }) { Text("Guardar") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
 }
 
 @Composable
